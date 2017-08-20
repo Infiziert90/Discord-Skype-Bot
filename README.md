@@ -1,6 +1,8 @@
 # Discord-Skype-Bot
 Discord-Bot that connect discord and skype. 
 
+# Work in Progress 
+
 # Usage
 
 Start with installing the depdencies through ``pip``.
@@ -34,5 +36,7 @@ However running this repository requires the above listed requirements.
 # Thanks  
 BluBb_mADe, dark_star90 
 
-# Work in Progress  
+# Help?
 
+Add me in discord and write me your problem:
+Infi#8527 
