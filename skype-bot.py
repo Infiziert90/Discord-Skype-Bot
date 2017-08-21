@@ -10,7 +10,7 @@ import discord
 import asyncio
 import logging
 import datetime
-from skpy import Skype
+import skpy
 from importlib import reload
 from argparse import ArgumentParser
 from configparser import ConfigParser
@@ -82,7 +82,6 @@ def get_config():
 
     return config, logger
 
-
 def get_channel(config):
     ch = {}
     for key, channel_id in config["DISCORD_CHANNELS"].items():
@@ -107,12 +106,13 @@ rex_mention_channel = re.compile("<#(\d+)>")
 rex_username = re.compile("@(\w+)")
 
 # get skype connection
-sk = Skype(MAIN.get("skype_email"), MAIN.get("skype_password"))
+sk = skpy.Skype(MAIN.get("skype_email"), MAIN.get("skype_password"))
 
 # global variables
 date_format = "%a %d %b %H:%M:%S"
 discord_url = "https://cdn.discordapp.com/emojis/"
 ch = get_channel(config)
+logger.warning("Channel list finished")
 skype_content_list = {}
 discord_content_list = {}
 
@@ -216,7 +216,11 @@ async def skype_loop():
         for chat_instance in ch.values():
             message_list = []
             time_now = datetime.datetime.now() - datetime.timedelta(hours=2, minutes=1)
-            mes = chat_instance[0].getMsgs()
+            try:
+                mes = chat_instance[0].getMsgs()
+            except skpy.core.SkypeApiException as err:
+                logger.warning(f"Get Error from SkypeApi\n{err}\nContinue from begin")
+                continue
             for message_sky in mes:
                 if not message_sky.user.id in skype_id:
                     if message_sky.time > time_now:
@@ -417,4 +421,8 @@ async def on_message_delete(message):
             old_mes["skype_id"].delete()
 
 def main():
+    logger.warning("Start discord run")
     client.run(MAIN.get("login_token"))
+
+if __name__ == "__main__":
+    main()
