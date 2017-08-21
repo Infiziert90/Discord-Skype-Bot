@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# Copyright (c) 2017 Infi
+# Copyright (c) 2017 Toni Hänsel
 
 
 import re
@@ -15,7 +15,7 @@ from importlib import reload
 from argparse import ArgumentParser
 from configparser import ConfigParser
 
-__version__ = "0.1.0-Alpha"
+__version__ = "0.2.0-Alpha"
 PROG_NAME = "skype-bot"
 
 if not sys.version_info[:2] >= (3, 6):
@@ -40,8 +40,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HOME_DIR = os.path.expanduser("~")
 DEFAULT_CONFIG_PATHS = [
     os.path.join(HOME_DIR, ".skype-bot.ini"),
-    os.path.join(BASE_DIR, "feed2discord.local.ini"),
-    os.path.join("feed2discord.local.ini"),
+    os.path.join(BASE_DIR, "skype-bot.local.ini"),
+    os.path.join("skype-bot.local.ini"),
     os.path.join("/etc/skype-bot.ini"),
     os.path.join(BASE_DIR, "skype-bot.ini"),
     os.path.join("skype-bot.ini"),
@@ -86,9 +86,20 @@ def get_channel(config):
     ch = {}
     for key, channel_id in config["DISCORD_CHANNELS"].items():
         ch[channel_id] = [sk.chats[f"{config['SKYPE_CHANNELS'][key]}"], discord.Object(id=f"{channel_id}")]
-    logger.info(f"Generated channel list.")
+    logger.info(f"Channel:\n{ch}")
+    logger.warning(f"Generated channel list.")
 
     return ch
+
+def get_startswith(config):
+    start_tuple = []
+    for word in config["FORBIDDEN_START"].values():
+        start_tuple.append(word)
+    start_tuple = tuple(start_tuple)
+    logger.info(f"Forbidden Start:\n{start_tuple}")
+    logger.warning(f"Generated forbidden start list.")
+
+    return start_tuple
 
 config, logger = get_config()
 
@@ -109,14 +120,12 @@ rex_username = re.compile("@(\w+)")
 sk = skpy.Skype(MAIN.get("skype_email"), MAIN.get("skype_password"))
 
 # global variables
-date_format = "%a %d %b %H:%M:%S"
-discord_url = "https://cdn.discordapp.com/emojis/"
 ch = get_channel(config)
-logger.warning("Channel list finished")
+start_tuple = get_startswith(config)
 skype_content_list = {}
 discord_content_list = {}
 
-# global variables that not can be set directly.
+# global variables that can't be set directly.
 def set_global_variables():
     global discord_id, skype_id
     discord_id = [str(client.user.id)]
@@ -136,8 +145,8 @@ def markup(x):
     text = re.sub(r"</?i.*?>", "_", text)
     text = re.sub(r"</?s.*?>", "~", text)
     text = re.sub(r"</?pre.*?>", "{code}", text)
-    text = re.sub(r"""<a.*?href="(.*?)">.*?</a>""", r"\1", text)
-    text = re.sub(r"""<at.*?id="8:(.*?)">.*?</at>""", r"@\1", text)
+    text = re.sub(r'<a.*?href="(.*?)">.*?</a>', r"\1", text)
+    text = re.sub(r'<at.*?id="8:(.*?)">.*?</at>', r"@\1", text)
     text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&") \
                .replace("&quot;", "\"").replace("&apos;", "'")
     return text
@@ -161,7 +170,7 @@ def edit_skype_message(message):
     skype_con = markup(message)
     skype_con = skype_con.split(" ")
     user_id = []
-    # Search and replace discord mention with the discord code for mentions
+    # Search and replace user mention with the discord code for mentions
     for index, sky_mes in enumerate(skype_con):
         username = re.match(rex_username, sky_mes)
         if username:
@@ -207,7 +216,7 @@ def inspect_skype_content_edit(message):
     else:
         return ["", message.clientId, True, True]
 
-# Get all skype messages and process it
+# Get all skype messages and process it.
 # Endless loop with a 1s sleep for API behaviors
 async def skype_loop():
     logger.warning("Start skype_loop.")
@@ -215,11 +224,11 @@ async def skype_loop():
         await asyncio.sleep(1)
         for chat_instance in ch.values():
             message_list = []
-            time_now = datetime.datetime.now() - datetime.timedelta(hours=2, minutes=1)
+            time_now = datetime.datetime.now() - datetime.timedelta(hours=2, seconds=30)
             try:
                 mes = chat_instance[0].getMsgs()
             except skpy.core.SkypeApiException as err:
-                logger.warning(f"Get Error from SkypeApi\n{err}\nContinue from begin")
+                logger.warning(f"Getting an error from skpy\n{err}\nContinue from begin")
                 continue
             for message_sky in mes:
                 if not message_sky.user.id in skype_id:
@@ -235,7 +244,7 @@ async def skype_loop():
                     else:
                         break
 
-            # Discord messages lenght is limited to 2000 chars.
+            # Discord messages length is limited to 2000 chars.
             # If len > 1800 chars the messages will get truncated.
             for content in message_list[::-1]:
                 if len(content[0]) > 1800:
@@ -247,13 +256,16 @@ async def skype_loop():
                     except KeyError:
                         pass
                 else:
-                    message_for_edit = await client.get_message(chat_instance[1], skype_content_list[str(content[1])]["discord_id"])
-                    if not content[3]:
-                        await client.edit_message(message_for_edit, new_content=content[0])
-                    else:
-                        await client.delete_message(message_for_edit)
+                    try:
+                        message_for_edit = await client.get_message(chat_instance[1], skype_content_list[str(content[1])]["discord_id"])
+                        if not content[3]:
+                            await client.edit_message(message_for_edit, new_content=content[0])
+                        else:
+                            await client.delete_message(message_for_edit)
+                    except discord.errors.Forbidden:
+                        client.send_message(chat_instance[1], "Bot need rights to read message history")
 
-# Endless loop that clear the messages list
+# Endless loop that clear the message list
 # Messages will be saved for 1hour ... after this edit and delete is forbidden
 # Because the message save is getting deleted for performance reason
 async def cleaner_content_list():
@@ -290,29 +302,14 @@ async def on_ready():
             avatar = f.read()
         await client.edit_profile(avatar=avatar)
 
-
     set_global_variables()
     asyncio.ensure_future(skype_loop())
     asyncio.ensure_future(cleaner_content_list())
 
 @client.event
 async def on_message(message):
-    if message.content.startswith(""):
-        try:
-            server_id = message.server.id
-            server_name = message.server.name
-        except AttributeError:
-            server_id = "0"
-            server_name = "Private Message"
-
-    if message.content.startswith(">>"):
-        today = datetime.datetime.today()
-        today = today.strftime(date_format)
-        print(
-            "Date: {} User: {} Server: {} Command {} ".format(today, message.author, server_name, message.content[:50]))
-
     # Search for messages that contain needed information
-    if not message.content.startswith(">>") and not message.author.id in discord_id:
+    if not message.content.startswith(start_tuple) and not message.author.id in discord_id:
         if message.channel.id in ch:
             mes = message.content.replace("\n", "\n ").split(" ")
             user_name = message.author.name
@@ -322,11 +319,13 @@ async def on_message(message):
                 emoji = re.match(rex, x)
                 if emoji:
                     # uncomment this and you will send for each emoji a link with preview
+                    # discord_url = "https://cdn.discordapp.com/emojis/"
                     #emoji_url = f"{discord_url}{emoji.group(2)}.png"
                     #emo = f"<a href=\"{emoji_url}\" >{emoji.group(1)}</a>>"
 
                     # this need to be commented with uncomment stuff above
                     emo = f"<b raw_pre=\"*\" raw_post=\"*\">{emoji.group(1)}</b>"
+                    # stop here
                     mes[index] = emo
                 mention = re.match(rex_mention, x)
                 if mention:
@@ -363,7 +362,7 @@ async def on_message(message):
 
 @client.event
 async def on_message_edit(old_message, message):
-    if not message.content.startswith(">>") and not message.author.id in discord_id:
+    if not message.content.startswith(start_tuple) and not message.author.id in discord_id:
         if message.channel.id in ch:
             mes = message.content.replace("\n", "\n ").split(" ")
             user_name = message.author.name
@@ -373,11 +372,13 @@ async def on_message_edit(old_message, message):
                 emoji = re.match(rex, x)
                 if emoji:
                     # uncomment this and you will send for each emoji a link with preview
+                    #discord_url = "https://cdn.discordapp.com/emojis/"
                     #emoji_url = f"{discord_url}{emoji.group(2)}.png"
                     #emo = f"<a href=\"{emoji_url}\" >{emoji.group(1)}</a>>"
 
                     # this need to be commented with uncomment stuff above
                     emo = f"<b raw_pre=\"*\" raw_post=\"*\">{emoji.group(1)}</b>"
+                    # stop here
                     mes[index] = emo
                 mention = re.match(rex_mention, x)
                 if mention:
@@ -415,7 +416,7 @@ async def on_message_edit(old_message, message):
 
 @client.event
 async def on_message_delete(message):
-    if not message.content.startswith(">>") and not message.author.id in discord_id:
+    if not message.content.startswith(start_tuple) and not message.author.id in discord_id:
         if message.channel.id in ch:
             old_mes = discord_content_list[message.id]
             old_mes["skype_id"].delete()
