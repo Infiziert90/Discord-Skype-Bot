@@ -1,4 +1,4 @@
 beautifulsoup4==4.5.3
 configparser==3.5.0
-discord.py==0.16.8
+discord.py==0.16.10
 requests==2.18.1

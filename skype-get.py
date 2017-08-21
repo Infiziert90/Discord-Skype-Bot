@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# Copyright (c) 2017 Infi
+# Copyright (c) 2017 Toni Hänsel
 
 import os
 import sys
@@ -16,15 +16,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HOME_DIR = os.path.expanduser("~")
 DEFAULT_CONFIG_PATHS = [
     os.path.join(HOME_DIR, ".skype-bot.ini"),
-    os.path.join(BASE_DIR, "feed2discord.local.ini"),
-    os.path.join("feed2discord.local.ini"),
+    os.path.join(BASE_DIR, "skype-bot.local.ini"),
+    os.path.join("skype-bot.local.ini"),
     os.path.join("/etc/skype-bot.ini"),
     os.path.join(BASE_DIR, "skype-bot.ini"),
     os.path.join("skype-bot.ini"),
 ]
 
 
-__version__ = "0.1.0-Alpha"
+__version__ = "0.2.0-Alpha"
 PROG_NAME = "skype-get"
 
 if not sys.version_info[:2] >= (3, 6):
