@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 import configparser
 from argparse import ArgumentParser
@@ -102,6 +103,18 @@ def load_config():
     for key, channel_id in config.DISCORD_CHANNELS.items():
         config.ch[channel_id] = f"{config.SKYPE_CHANNELS[key]}"
     logging.info(f"Channel:\n{config.ch}")
+
+    config.emoji = bidict()
+    with open(BASE_DIR + "/emoji/emoji.json") as emoji_json:
+        emoji_dict = json.load(emoji_json)
+    for discord_emo, skype_emo in emoji_dict.items():
+        config.emoji[discord_emo] = skype_emo
+
+    config.unicode_emoji = {}
+    with open(BASE_DIR + "/emoji/unicode_emoji.json") as emoji_json:
+        emoji_dict = json.load(emoji_json)
+    for unicode, discord_name in emoji_dict.items():
+        config.unicode_emoji[unicode] = discord_name
 
 
 __all__ = ['config', 'load_config', 'bidict']

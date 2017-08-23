@@ -77,7 +77,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
         elif isinstance(event, skpy.SkypeEditMessageEvent):
             content = self.inspect_skype_content_edit(event.msg)
             event.msg.content = content
-            self.discord.enque(event.msg, work=2 if content else 3)
+            self.discord.enque(event.msg, work=3 if event.msg.deleted else 2)
 
     def send_message(self, msg, work, new_msg):
         try:
@@ -181,6 +181,11 @@ class AsyncSkype(skpy.SkypeEventLoop):
         user_id = []
         # Search and replace user mention with the discord code for mentions
         for index, sky_mes in enumerate(skype_con):
+            if sky_mes in config.emoji:
+                if "|"  in config.emoji[sky_mes]:
+                    skype_con[index] = f":{config.emoji[sky_mes][:-2]}:"
+                else:
+                    skype_con[index] = f":{config.emoji[sky_mes]}:"
             username = re.match(rex["@(\w+)"], sky_mes)
             if username:
                 for user in self.discord.client.get_all_members():
@@ -252,13 +257,10 @@ class ApplicationDiscord(discord.Client):
 
     async def on_message(self, message):
         content = message.content
-        if not content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden:
+        if not content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden and not message.author.name in self.discord_forbidden:
             if message.channel in config.ch:
                 message.content = await self.edit_discord_message(content, message)
                 self.Skype.enque(message, work=1, new_msg=None)
-
-        if message.content.startswith(">>show_message_dict"):
-            print(self.message_dict)
 
     async def on_message_edit(self, old_message, message):
         content = message.content
@@ -292,6 +294,8 @@ class ApplicationDiscord(discord.Client):
             self.forward_q.append((msg, work))
 
     async def discord_delete_message(self, msg, work):
+        if msg.clientId not in self.message_dict:
+            return
         try:
             await self.delete_message(self.message_dict[msg.clientId])
         except Exception as e:
@@ -315,7 +319,12 @@ class ApplicationDiscord(discord.Client):
                 splitted_message[index] = f"<a href=\"{x}\">{x}</a>"
                 continue
             emoji = re.match(rex["<:(\w+):(\d+)>"], x)
+            if x in config.unicode_emoji:
+                splitted_message[index] = f"{config.emoji[config.unicode_emoji[x]][1:-1]}"
             if emoji:
+                if emoji.group(1) in config.emoji:
+                    splitted_message[index] = f"{config.emoji[emoji.group(1)][1:-1]}"
+                    continue
                 emo = f"<b raw_pre=\"*\" raw_post=\"*\">{emoji.group(1)}</b>"
                 splitted_message[index] = emo
                 continue
