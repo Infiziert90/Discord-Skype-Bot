@@ -1,429 +1,367 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
+# coding: utf-8
 # Copyright (c) 2017 Toni Hänsel
 
-
 import re
-import os
 import sys
+import skpy
 import discord
 import asyncio
 import logging
-import datetime
-import skpy
-from importlib import reload
-from argparse import ArgumentParser
-from configparser import ConfigParser
-
-__version__ = "0.2.0-Alpha"
-PROG_NAME = "skype-bot"
+from config import *
+from collections import deque
+from typing import Tuple, Deque
 
 if not sys.version_info[:2] >= (3, 6):
     print("Error: requires python 3.6 or newer")
     exit(1)
 
 
-class ImproperlyConfigured(Exception):
-    pass
+class Rex(dict):
+    def __getitem__(self, item):
+        return self.setdefault((item, 0), re.compile(item))
+
+    def __setitem__(self, key, value):
+        raise AttributeError('Rex objects are not supposed to be set')
+
+    def get(self, k, flags=0):
+        return self.setdefault((k, flags), re.compile(k, flags))
+
+rex = Rex()
 
 
-def parse_args():
-    version = f"{PROG_NAME}-{__version__}"
-    p = ArgumentParser(prog=PROG_NAME)
-    p.add_argument("--version", action="version", version=version)
-    p.add_argument("--config")
+class AsyncSkype(skpy.SkypeEventLoop):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.forward_q: Deque[Tuple[discord.Message, int, discord.Message]] = deque()
+        self.discord: ApplicationDiscord = None
+        self.skype_forbidden = []
+        self.get_forbidden_list()
+        self.message_dict = {}
+        self.run_loop()
 
-    return p.parse_args()
+    def enque(self, msg, work, new_msg=None):
+        self.forward_q.append((msg, work, new_msg))
 
+    def run_loop(self):
+        asyncio.ensure_future(self.main_loop())
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-HOME_DIR = os.path.expanduser("~")
-DEFAULT_CONFIG_PATHS = [
-    os.path.join(HOME_DIR, ".skype-bot.ini"),
-    os.path.join(BASE_DIR, "skype-bot.local.ini"),
-    os.path.join("skype-bot.local.ini"),
-    os.path.join("/etc/skype-bot.ini"),
-    os.path.join(BASE_DIR, "skype-bot.ini"),
-    os.path.join("skype-bot.ini"),
-]
-
-
-def get_config():
-    args = parse_args()
-    config = ConfigParser()
-    if args.config:
-        config.read(args.config)
-    else:
-        for path in DEFAULT_CONFIG_PATHS:
-            if os.path.isfile(path):
-                config.read(path)
-                break
-        else:
-            raise ImproperlyConfigured("No configuration file found.")
-
-    debug = config["MAIN"].getint("debug", 0)
-
-    if debug:
-        os.environ["PYTHONASYNCIODEBUG"] = "1"
-        # The AIO modules need to be reloaded because of the new env var
-        reload(asyncio)
-        reload(discord)
-
-    if debug >= 3:
-        log_level = logging.DEBUG
-    elif debug >= 2:
-        log_level = logging.INFO
-    else:
-        log_level = logging.WARNING
-
-    logging.basicConfig(level=log_level)
-    logger = logging.getLogger(__name__)
-    logger.setLevel(log_level)
-
-    return config, logger
-
-def get_channel(config):
-    ch = {}
-    for key, channel_id in config["DISCORD_CHANNELS"].items():
-        ch[channel_id] = [sk.chats[f"{config['SKYPE_CHANNELS'][key]}"], discord.Object(id=f"{channel_id}")]
-    logger.info(f"Channel:\n{ch}")
-    logger.warning(f"Generated channel list.")
-
-    return ch
-
-def get_startswith(config):
-    start_tuple = []
-    for word in config["FORBIDDEN_START"].values():
-        start_tuple.append(word)
-    start_tuple = tuple(start_tuple)
-    logger.info(f"Forbidden Start:\n{start_tuple}")
-    logger.warning(f"Generated forbidden start list.")
-
-    return start_tuple
-
-config, logger = get_config()
-
-# Make main config area global, since used everywhere/anywhere
-MAIN = config['MAIN']
-
-# global discord client object
-client = discord.Client()
-
-# precompile regex for global use
-rex = re.compile("<:(\w+):(\d+)>")
-rex_mention = re.compile("<@!?(\d+)>")
-rex_mention_role = re.compile("<@&(\d+)>")
-rex_mention_channel = re.compile("<#(\d+)>")
-rex_username = re.compile("@(\w+)")
-
-# get skype connection
-sk = skpy.Skype(MAIN.get("skype_email"), MAIN.get("skype_password"))
-
-# global variables
-ch = get_channel(config)
-start_tuple = get_startswith(config)
-skype_content_list = {}
-discord_content_list = {}
-
-# global variables that can't be set directly.
-def set_global_variables():
-    global discord_id, skype_id
-    discord_id = [str(client.user.id)]
-    skype_id = [str(sk.user.id)]
-    for x in config["FORBIDDEN_DISCORD"].values():
-        discord_id.append(str(x))
-    for x in config["FORBIDDEN_SKYPE"].values():
-        skype_id.append(str(x))
-    logger.info(f"Forbidden Skype:\n{skype_id}\nForbidden Discord:\n{discord_id}")
-
-# From skpy
-def markup(x):
-    if x.content is None:
-        return None
-    text = re.sub(r"<e.*?/>", "", x.content)
-    text = re.sub(r"</?b.*?>", "*", text)
-    text = re.sub(r"</?i.*?>", "_", text)
-    text = re.sub(r"</?s.*?>", "~", text)
-    text = re.sub(r"</?pre.*?>", "{code}", text)
-    text = re.sub(r'<a.*?href="(.*?)">.*?</a>', r"\1", text)
-    text = re.sub(r'<at.*?id="8:(.*?)">.*?</at>', r"@\1", text)
-    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&") \
-               .replace("&quot;", "\"").replace("&apos;", "'")
-    return text
-
-
-def edit_skype_message(message):
-    right_mes = ""
-    # Search and replace skype-quotes for discord styles quotes
-    if "<quote" in message.content:
-        mes = message.content.split(">")
-        for index, mes_split_item in enumerate(mes):
-            if "</legacyquote" in mes_split_item:
-                if not "&lt;&lt;&lt;" in mes_split_item:
-                    right_mes += f">{mes_split_item[:-13]}\n"
-            if "<legacyquote" in mes_split_item:
-                if len(mes_split_item) != 12:
-                    right_mes += f" {mes_split_item[:-12]}\n\n\n"
-        mes = message.content.split("</quote>")[-1]
-        message.content = right_mes + mes
-
-    skype_con = markup(message)
-    skype_con = skype_con.split(" ")
-    user_id = []
-    # Search and replace user mention with the discord code for mentions
-    for index, sky_mes in enumerate(skype_con):
-        username = re.match(rex_username, sky_mes)
-        if username:
-            for user in client.get_all_members():
-                y = str(username.group(1))
-                if re.search(y, user.name) or (user.nick and re.search(y, user.nick)):
-                    user_id.append(user.id)
-            user_names = ""
-            if user_id:
-                for us_id in user_id:
-                    user_names += f"<@{us_id}> "
-            skype_con[index] = user_names
-
-    message_con = " ".join(skype_con)
-    message_con = message_con.replace("{code}", "```")
-    message_con = message_con.replace("&lt;&lt;&lt;", "")
-    return message_con
-
-# Search for skypes messages with specifed content
-def inspect_skype_content(message):
-    if "<URIObject" in message.content:
-        mes = message.content.split("url_thumbnail=\"")[1]
-        mes = mes.split("\"")[0]
-        return [f"**{message.user.name}** sended a file ... here the preview {mes}", message.clientId, False]
-    elif "<addmember" in message.content:
-        return [f"**{message.user.name}** joined the chat in skype!", message.clientId, False]
-    elif "<delete" in message.content:
-        mes = message.content.split("<target>")[1]
-        mes = mes.split("</target>")[0]
-        mes = mes[2:]
-        return [f"**{mes}** was removed from the chat in skype!", message.clientId, False]
-    else:
-        message_con = edit_skype_message(message)
-        return [f"**{message.user.name}**: {message_con}", message.clientId, False]
-
-# if message.content, the discord messages will be edited
-# else the discord messages will be deleted
-def inspect_skype_content_edit(message):
-    if message.content:
-        message_con = edit_skype_message(message)
-        message_con = message_con.replace("Edited previous message:", "")
-        return[f"**{message.user.name}**: {message_con}", message.clientId, True, False]
-    else:
-        return ["", message.clientId, True, True]
-
-# Get all skype messages and process it.
-# Endless loop with a 1s sleep for API behaviors
-async def skype_loop():
-    logger.warning("Start skype_loop.")
-    while client.is_logged_in:
-        await asyncio.sleep(1)
-        for chat_instance in ch.values():
-            message_list = []
-            time_now = datetime.datetime.now() - datetime.timedelta(hours=2, seconds=30)
-            try:
-                mes = chat_instance[0].getMsgs()
-            except skpy.core.SkypeApiException as err:
-                logger.warning(f"Getting an error from skpy\n{err}\nContinue from begin")
-                continue
-            for message_sky in mes:
-                if not message_sky.user.id in skype_id:
-                    if message_sky.time > time_now:
-                        if not str(message_sky.clientId) in skype_content_list.keys():
-                            skype_content_list[message_sky.clientId] = {
-                                "time": message_sky.time,
-                                "discord_id": "",
-                            }
-                            message_list.append(inspect_skype_content(message_sky))
-                        else:
-                            message_list.append(inspect_skype_content_edit(message_sky))
+    async def main_loop(self):
+        loop = asyncio.get_event_loop()
+        cyc = asyncio.Future()
+        cyc.set_result(0)
+        try:
+            while True:
+                await asyncio.sleep(.3)
+                if cyc.done():
+                    cyc = asyncio.ensure_future(loop.run_in_executor(None, self.cycle))
+                while self.forward_q:
+                    msg, work, new_msg = self.forward_q.popleft()
+                    if work == 1:
+                        self.send_message(msg, work, new_msg)
+                    elif work == 2:
+                        self.edit_message(msg, work, new_msg)
                     else:
-                        break
+                        self.delete_message(msg, work, new_msg)
+                    await asyncio.sleep(.1)
+        except Exception as e:
+            logging.exception("Exception in skype main loop")
+            self.run_loop()
 
-            # Discord messages length is limited to 2000 chars.
-            # If len > 1800 chars the messages will get truncated.
-            for content in message_list[::-1]:
-                if len(content[0]) > 1800:
-                    content[0] = content[0][:1800] + "... Message truncated"
-                if not content[2]:
-                    message = await client.send_message(chat_instance[1], content[0])
-                    try:
-                        skype_content_list[str(content[1])]["discord_id"] = f"{message.id}"
-                    except KeyError:
-                        pass
-                else:
-                    try:
-                        message_for_edit = await client.get_message(chat_instance[1], skype_content_list[str(content[1])]["discord_id"])
-                        if not content[3]:
-                            await client.edit_message(message_for_edit, new_content=content[0])
-                        else:
-                            await client.delete_message(message_for_edit)
-                    except discord.errors.Forbidden:
-                        client.send_message(chat_instance[1], "Bot need rights to read message history")
+    def onEvent(self, event):
+        if hasattr(event, "msg") and event.msg.user.id in self.skype_forbidden:
+            return
+        if isinstance(event, skpy.SkypeNewMessageEvent):
+            event.msg.content = self.inspect_skype_content(event.msg)
+            self.discord.enque(event.msg, work=1)
+        elif isinstance(event, skpy.SkypeEditMessageEvent):
+            content = self.inspect_skype_content_edit(event.msg)
+            event.msg.content = content
+            self.discord.enque(event.msg, work=2 if content else 3)
 
-# Endless loop that clear the message list
-# Messages will be saved for 1hour ... after this edit and delete is forbidden
-# Because the message save is getting deleted for performance reason
-async def cleaner_content_list():
-    logger.warning("Start cleaner.")
-    while client.is_logged_in:
-        await asyncio.sleep(600)
-        time_now = datetime.datetime.now()
-        time_now = time_now - datetime.timedelta(hours=1, minutes=1)
-        for mes_key in list(skype_content_list.items()):
-            if mes_key[1]["time"] < time_now:
-                del skype_content_list[mes_key[0]]
+    def send_message(self, msg, work, new_msg):
+        try:
+            skype_message = self.chats[f"{config.ch[msg.channel]}"].sendMsg(msg.content, rich=True)
+            self.update_internal_msg(skype_message, msg)
+        except Exception as e:
+            logging.exception("Exception in skype send_message")
+            self.forward_q.append((msg, work, new_msg))
 
-        for mes_key in list(discord_content_list.items()):
-            if mes_key[1]["time"] < time_now:
-                del discord_content_list[mes_key[0]]
-
-@client.event
-async def on_ready():
-    print('Logged in as')
-    print("Username:" + client.user.name)
-    print("User ID:" + client.user.id)
-    print("Version API: " + discord.__version__)
-    print('------')
-    # set current game played
-    gameplayed = MAIN.get("gameplayed", "Yuri is Love")
-    if gameplayed:
-        game = discord.Game(name=gameplayed)
-        await client.change_presence(game=game)
-
-    # set avatar if specified
-    avatar_file_name = MAIN.get("avatarfile")
-    if avatar_file_name:
-        with open(avatar_file_name, "rb") as f:
-            avatar = f.read()
-        await client.edit_profile(avatar=avatar)
-
-    set_global_variables()
-    asyncio.ensure_future(skype_loop())
-    asyncio.ensure_future(cleaner_content_list())
-
-@client.event
-async def on_message(message):
-    # Search for messages that contain needed information
-    if not message.content.startswith(start_tuple) and not message.author.id in discord_id:
-        if message.channel.id in ch:
-            mes = message.content.replace("\n", "\n ").split(" ")
-            user_name = message.author.name
-            for index, x in enumerate(mes):
-                if re.search("http", x):
-                    mes[index] = f"<a href=\"{x}\">{x}</a>"
-                emoji = re.match(rex, x)
-                if emoji:
-                    # uncomment this and you will send for each emoji a link with preview
-                    # discord_url = "https://cdn.discordapp.com/emojis/"
-                    #emoji_url = f"{discord_url}{emoji.group(2)}.png"
-                    #emo = f"<a href=\"{emoji_url}\" >{emoji.group(1)}</a>>"
-
-                    # this need to be commented with uncomment stuff above
-                    emo = f"<b raw_pre=\"*\" raw_post=\"*\">{emoji.group(1)}</b>"
-                    # stop here
-                    mes[index] = emo
-                mention = re.match(rex_mention, x)
-                if mention:
-                    mention = await client.get_user_info(f"{mention.group(1)}")
-                    mention = f"@{mention.name}"
-                    mes[index] = mention
-                mention_role = re.match(rex_mention_role, x)
-                if mention_role:
-                    for role in message.server.roles:
-                        if role.id == mention_role.group(1):
-                            mentioned_role = role
-                    mention = f"@{mentioned_role.name} (Discord Role)"
-                    mes[index] = mention
-                mention_channel = re.match(rex_mention_channel, x)
-                if mention_channel:
-                    mention = client.get_channel(f"{mention_channel.group(1)}")
-                    mention = f"#{mention.name}"
-                    mes[index] = mention
-
-            mes_full = " ".join(mes)
-            # Search and replace {code}. Its not good when you allow this.
-            mes_full = mes_full.replace("{code}", "```")
-            if not message.attachments:
-                content = f"<b raw_pre=\"*\" raw_post=\"*\">{user_name}: </b> {mes_full}"
-            else:
-                content = f"<b raw_pre=\"*\" raw_post=\"*\">{user_name}: </b> {mes_full}"
-                for x in message.attachments:
-                    content += f"<a href=\"{x['url']}\">{x['filename']}</a>"
-            sky_mes = ch[str(message.channel.id)][0].sendMsg(content, rich=True)
-            discord_content_list[message.id] = {
-                "time": sky_mes.time,
-                "skype_id": sky_mes,
-            }
-
-@client.event
-async def on_message_edit(old_message, message):
-    if not message.content.startswith(start_tuple) and not message.author.id in discord_id:
-        if message.channel.id in ch:
-            mes = message.content.replace("\n", "\n ").split(" ")
-            user_name = message.author.name
-            for index, x in enumerate(mes):
-                if re.search("http", x):
-                    mes[index] = f"<a href=\"{x}\">{x}</a>"
-                emoji = re.match(rex, x)
-                if emoji:
-                    # uncomment this and you will send for each emoji a link with preview
-                    #discord_url = "https://cdn.discordapp.com/emojis/"
-                    #emoji_url = f"{discord_url}{emoji.group(2)}.png"
-                    #emo = f"<a href=\"{emoji_url}\" >{emoji.group(1)}</a>>"
-
-                    # this need to be commented with uncomment stuff above
-                    emo = f"<b raw_pre=\"*\" raw_post=\"*\">{emoji.group(1)}</b>"
-                    # stop here
-                    mes[index] = emo
-                mention = re.match(rex_mention, x)
-                if mention:
-                    mention = await client.get_user_info(f"{mention.group(1)}")
-                    mention = f"@{mention.name}"
-                    mes[index] = mention
-                mention_role = re.match(rex_mention_role, x)
-                if mention_role:
-                    for role in message.server.roles:
-                        if role.id == mention_role.group(1):
-                            mentioned_role = role
-                    mention = f"@{mentioned_role.name} (Discord Role)"
-                    mes[index] = mention
-                mention_channel = re.match(rex_mention_channel, x)
-                if mention_channel:
-                    mention = client.get_channel(f"{mention_channel.group(1)}")
-                    mention = f"#{mention.name}"
-                    mes[index] = mention
-
-            mes_full = " ".join(mes)
-            mes_full = mes_full.replace("{code}", "```")
-            if not message.attachments:
-                content = f"<b raw_pre=\"*\" raw_post=\"*\">{user_name}: </b> {mes_full}"
-            else:
-                content = f"<b raw_pre=\"*\" raw_post=\"*\">{user_name}: </b> {mes_full}"
-                for x in message.attachments:
-                    content += f"<a href=\"{x['url']}\"> {x['name']} </a>"
-            old_mes = discord_content_list[old_message.id]
-            sky_mes = old_mes["skype_id"].edit(content=content, rich=True)
-            discord_content_list[message.id] = {
-                "time": sky_mes.time,
-                "skype_id": sky_mes,
-            }
+    def edit_message(self, msg: discord.Message, work, new_msg):
+        if msg.id not in self.message_dict:
+            return
+        try:
+            skype_message = self.message_dict[msg.id].edit(content=new_msg.content, rich=True)
+            del self.message_dict[msg.id]
+            self.update_internal_msg(skype_message, new_msg)
+        except Exception as e:
+            logging.exception("Exception in skype edit_message")
+            self.forward_q.append((msg, work, new_msg))
 
 
-@client.event
-async def on_message_delete(message):
-    if not message.content.startswith(start_tuple) and not message.author.id in discord_id:
-        if message.channel.id in ch:
-            old_mes = discord_content_list[message.id]
-            old_mes["skype_id"].delete()
+    def delete_message(self, msg, work, new_msg):
+        if msg.id not in self.message_dict:
+            return
+        try:
+            self.message_dict[msg.id].delete()
+            del self.message_dict[msg.id]
+        except Exception as e:
+            logging.exception("Exception in skype delete_message")
+            self.forward_q.append((msg, work, new_msg))
+
+    def update_internal_msg(self, skype_msg_obj, discord_msg_obj):
+        self.message_dict[discord_msg_obj.id] = skype_msg_obj
+        asyncio.get_event_loop().call_later(3600, lambda : self.message_dict.pop(discord_msg_obj.id, None))
+
+    def get_forbidden_list(self):
+        self.skype_forbidden = [self.user.id]
+        for x in config["FORBIDDEN_SKYPE"].values():
+            self.skype_forbidden.append(str(x))
+        logging.info(f"Forbidden Skype:\n{self.skype_forbidden}")
+
+    def inspect_skype_content(self, message: skpy.SkypeMsg) -> str:
+        if isinstance(message, skpy.SkypeTextMsg):
+            message_con = self.edit_skype_message(message)
+            return f"**{message.user.name}**: {message_con}"
+        elif isinstance(message, skpy.SkypeAddMemberMsg):
+            return f"**{message.user.name}** joined the chat in skype!"
+        elif isinstance(message, skpy.SkypeRemoveMemberMsg):
+            mes = message.content.split("<target>")[1]
+            mes = mes.split("</target>")[0]
+            mes = mes[2:]
+            return f"**{mes}** was removed from the chat in skype!"
+        elif isinstance(message, skpy.SkypeFileMsg):
+            mes = message.content.split("url_thumbnail=\"")[1]
+            mes = mes.split("\"")[0]
+            return f"**{message.user.name}** sended a file ... here the preview {mes}"
+        elif isinstance(message, skpy.SkypeImageMsg):
+            mes = message.content.split("url_thumbnail=\"")[1]
+            mes = mes.split("\"")[0]
+            return f"**{message.user.name}** sended a file ... here the preview {mes}"
+
+    def inspect_skype_content_edit(self, message) -> str:
+        if message.content:
+            message_con = self.edit_skype_message(message)
+            message_con = message_con.replace("Edited previous message:", "")
+            return f"**{message.user.name}**: {message_con}"
+        else:
+            return ""
+
+    # From skpy
+    def markup(self, x):
+        if x.content is None:
+            return None
+        text = re.sub(rex["<e.*?/>"], "", x.content)
+        text = re.sub(rex["</?b.*?>"], "*", text)
+        text = re.sub(rex["</?i.*?>"], "_", text)
+        text = re.sub(rex["</?s.*?>"], "~", text)
+        text = re.sub(rex["</?pre.*?>"], "{code}", text)
+        text = re.sub(rex['<a.*?href="(.*?)">.*?</a>'], r"\1", text)
+        text = re.sub(rex['<at.*?id="8:(.*?)">.*?</at>'], r"@\1", text)
+        text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&") \
+            .replace("&quot;", "\"").replace("&apos;", "'")
+        return text
+
+    def edit_skype_message(self, message):
+        right_mes = ""
+        if "<quote" in message.content:
+            mes = message.content.split(">")
+            for index, mes_split_item in enumerate(mes):
+                if "</legacyquote" in mes_split_item:
+                    if not "&lt;&lt;&lt;" in mes_split_item:
+                        right_mes += f">{mes_split_item[:-13]}\n"
+                if "<legacyquote" in mes_split_item:
+                    if len(mes_split_item) != 12:
+                        right_mes += f" {mes_split_item[:-12]}\n\n\n"
+            mes = message.content.split("</quote>")[-1]
+            message.content = right_mes + mes
+
+        skype_con = self.markup(message)
+        skype_con = skype_con.split(" ")
+        user_id = []
+        # Search and replace user mention with the discord code for mentions
+        for index, sky_mes in enumerate(skype_con):
+            username = re.match(rex["@(\w+)"], sky_mes)
+            if username:
+                for user in self.discord.client.get_all_members():
+                    y = str(username.group(1))
+                    if re.search(y, user.name) or (user.nick and re.search(y, user.nick)):
+                        user_id.append(user.id)
+                user_names = ""
+                if user_id:
+                    for us_id in user_id:
+                        user_names += f"<@{us_id}> "
+                skype_con[index] = user_names
+
+        message_con = " ".join(skype_con)
+        message_con = message_con.replace("{code}", "```")
+        message_con = message_con.replace("&lt;&lt;&lt;", "")
+        return message_con
+
+
+class ApplicationDiscord(discord.Client):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.discord_forbidden = []
+        self.forward_q: Deque[Tuple[skpy.SkypeMsg, int]] = deque()
+        self.message_dict = {}
+        self.Skype = None
+        self.start_tuple = None
+
+    def enque(self, msg, work):
+        self.forward_q.append((msg, work))
+
+    def run_loop(self):
+        asyncio.ensure_future(self.main_loop())
+
+    async def main_loop(self):
+        try:
+            while True:
+                await asyncio.sleep(0.01)  # all the other things
+                while self.forward_q:
+                    msg, work= self.forward_q.popleft()
+                    if work == 1:
+                        await self.discord_send_message(msg, work)
+                    elif work == 2:
+                        await self.discord_edit_message(msg, work)
+                    else:
+                        await self.discord_delete_message(msg, work)
+        except Exception as e:
+            logging.exception("exception in discord main loop")
+            self.run_loop()
+
+    async def on_ready(self):
+        logging.info(f'Logged in as\nUsername: {self.user.name}\nID: {self.user.id}\nAPI Version: {discord.__version__}')
+        gameplayed = config.MAIN.get("gameplayed", "Yuri is Love")
+        if gameplayed:
+            game = discord.Game(name=gameplayed)
+            await self.change_presence(game=game)
+        avatar_file_name = config.MAIN.get("avatarfile")
+        if avatar_file_name:
+            with open(avatar_file_name, "rb") as f:
+                avatar = f.read()
+            await self.edit_profile(avatar=avatar)
+        self.get_forbidden_list()
+        self.get_startswith()
+        self.Skype = AsyncSkype(config.MAIN.skype_email, config.MAIN.skype_password)
+        self.Skype.discord = self
+        for k, v in config.ch.items():
+            if v.isdigit():
+                config.ch[k] = self.get_channel(v)
+        self.run_loop()
+
+    async def on_message(self, message):
+        content = message.content
+        if not content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden:
+            if message.channel in config.ch:
+                message.content = await self.edit_discord_message(content, message)
+                self.Skype.enque(message, work=1, new_msg=None)
+
+        if message.content.startswith(">>show_message_dict"):
+            print(self.message_dict)
+
+    async def on_message_edit(self, old_message, message):
+        content = message.content
+        if not message.content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden:
+            if message.channel in config.ch:
+                message.content = await self.edit_discord_message(content, message)
+                self.Skype.enque(old_message, work=2, new_msg=message)
+
+
+    async def on_message_delete(self, message):
+        if not message.content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden:
+            if message.channel in config.ch:
+                self.Skype.enque(message, work=3, new_msg=None)
+
+    async def discord_send_message(self, msg, work):
+        try:
+            discord_message = await self.send_message(config.ch[msg.chat.id], msg.content)
+            self.update_internal_msg(msg, discord_message)
+        except Exception as e:
+            logging.exception("Exception while sending discord message")
+            self.forward_q.append((msg, work))
+
+    async def discord_edit_message(self, msg: skpy.SkypeMsg, work):
+        if msg.clientId not in self.message_dict:
+            return
+        try:
+            discord_message = await self.edit_message(self.message_dict[msg.clientId], new_content=msg.content)
+            self.update_internal_msg(msg, discord_message)
+        except Exception as e:
+            logging.exception("Exception in discord_edit_message")
+            self.forward_q.append((msg, work))
+
+    async def discord_delete_message(self, msg, work):
+        try:
+            await self.delete_message(self.message_dict[msg.clientId])
+        except Exception as e:
+            logging.exception("Exception in discord_delete_message")
+            self.forward_q.append((msg, work))
+
+    def update_internal_msg(self, skype_msg_obj: skpy.SkypeMsg, discord_msg_obj):
+        self.message_dict[skype_msg_obj.clientId] = discord_msg_obj
+        asyncio.get_event_loop().call_later(3600, lambda : self.message_dict.pop(skype_msg_obj.clientId, None))
+
+    def get_forbidden_list(self):
+        self.discord_forbidden = [self.user.id]
+        for x in config["FORBIDDEN_DISCORD"].values():
+            self.discord_forbidden.append(str(x))
+        logging.info(f"Forbidden Discord:\n{self.discord_forbidden}")
+
+    async def edit_discord_message(self, content, message):
+        splitted_message = content.replace("\n", "\n ").split(" ")
+        for index, x in enumerate(splitted_message):
+            if re.search("http", x):
+                splitted_message[index] = f"<a href=\"{x}\">{x}</a>"
+                continue
+            emoji = re.match(rex["<:(\w+):(\d+)>"], x)
+            if emoji:
+                emo = f"<b raw_pre=\"*\" raw_post=\"*\">{emoji.group(1)}</b>"
+                splitted_message[index] = emo
+                continue
+            mention = re.match(rex["<@!?(\d+)>"], x)
+            if mention:
+                mention = await self.get_user_info(f"{mention.group(1)}")
+                mention = f"@{mention.name}"
+                splitted_message[index] = mention
+                continue
+            mention_role = re.match(rex["<@&(\d+)>"], x)
+            if mention_role:
+                for role in message.server.roles:
+                    if role.id == mention_role.group(1):
+                        mentioned_role = role
+                mention = f"@{mentioned_role.name} (Discord Role)"
+                splitted_message[index] = mention
+                continue
+            mention_channel = re.match(rex["<#(\d+)>"], x)
+            if mention_channel:
+                mention = self.get_channel(f"{mention_channel.group(1)}")
+                mention = f"#{mention.name}"
+                splitted_message[index] = mention
+        content = " ".join(splitted_message)
+        content = content.replace("{code}", "```")
+        if not message.attachments:
+            content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.name}: </b> {content}"
+        else:
+            content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.name}: </b> {content}"
+            for x in message.attachments:
+                content += f"<a href=\"{x['url']}\">{x['filename']}</a>"
+
+        return content
+
+    def get_startswith(self):
+        start_list = []
+        for word in config.FORBIDDEN_START.values():
+            start_list.append(word)
+        self.start_tuple = tuple(start_list)
+        logging.info(f"Forbidden Start:\n{self.start_tuple}")
+
 
 def main():
-    logger.warning("Start discord run")
-    client.run(MAIN.get("login_token"))
+    load_config()
+    logging.info("Start discord run")
+    app = ApplicationDiscord()
+    app.run(config.MAIN.login_token)
 
 if __name__ == "__main__":
     main()
