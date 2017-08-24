@@ -4,6 +4,7 @@
 
 import re
 import skpy
+import logging
 from config import *
 
 
@@ -127,7 +128,10 @@ class EditMessage():
                 continue
             emoji = re.match(rex["<:(\w+):(\d+)>"], x)
             if x in config.unicode_emoji:
-                splitted_message[index] = f"{config.emoji[config.unicode_emoji[x]][1:-1]}"
+                try:
+                    splitted_message[index] = f"{config.emoji[config.unicode_emoji[x]][1:-1]}"
+                except KeyError as e:
+                    logging.warning(f"Missing emoji in emoji.json: {config.unicode_emoji[x]}")
             if emoji:
                 if emoji.group(1) in config.emoji:
                     splitted_message[index] = f"{config.emoji[emoji.group(1)][1:-1]}"
