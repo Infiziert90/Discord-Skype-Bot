@@ -228,7 +228,7 @@
   "innocent": "~(:|~",
   "innocent|1": "~(wasntme)~",
   "innocent|2": "~(wm)~",
-  "joy": "~:)~",
+  "joy": "~(cwl)~",
   "neutral_face|3": "~:|~",
   "neutral_face|2": "~:-|~",
   "neutral_face|1": "~:=|~",
@@ -246,7 +246,10 @@
   "sun_with_face": "~(sun)~",
   "triumph": "~(swear)~",
   "point_up": "~(wait)~",
-  "joy_cat": "~(cwl)~",
+  "joy_cat": "~:)~",
+  "unicorn": "~(unicorn)~",
+  "owl": "~(yotfr)~",
+  "frowning": "~:(~",
 
   "####CUSTOM_EMOJI####": "####SKYPE_EMOJI####(only discord->skype",
   "rope_thinking": "(๑و•̀ㅅ•́)و",
@@ -259,6 +262,6 @@
   "saitama_ok": "Ô_ô",
   "same": "(@_@)",
   "SagiriDed": "¬_¬",
-  "SataniaGeh": "ಠ_ಠ",
+  "SanatiaGeh": "ಠ_ಠ",
   "rubyCry": "(ಥ﹏ಥ)"
 }
