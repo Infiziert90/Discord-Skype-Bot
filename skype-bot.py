@@ -60,12 +60,14 @@ class AsyncSkype(skpy.SkypeEventLoop):
         if hasattr(event, "msg") and event.msg.user.id in self.skype_forbidden:
             return
         if isinstance(event, skpy.SkypeNewMessageEvent):
-            event.msg.content = self.EditMessage.inspect_skype_content(event.msg)
-            self.discord.enque(event.msg, work=1)
+            if event.msg.chat.id in config.ch:
+                event.msg.content = self.EditMessage.inspect_skype_content(event.msg)
+                self.discord.enque(event.msg, work=1)
         elif isinstance(event, skpy.SkypeEditMessageEvent):
-            content = self.EditMessage.inspect_skype_content_edit(event.msg)
-            event.msg.content = content
-            self.discord.enque(event.msg, work=2 if event.msg.content else 3)
+            if event.msg.chat.id in config.ch:
+                content = self.EditMessage.inspect_skype_content_edit(event.msg)
+                event.msg.content = content
+                self.discord.enque(event.msg, work=2 if event.msg.content else 3)
 
     def send_message(self, msg, content, work, new_msg):
         try:
@@ -193,6 +195,8 @@ class ApplicationDiscord(discord.Client):
         try:
             discord_message = await self.send_message(config.ch[msg.chat.id], msg.content)
             self.update_internal_msg(msg, discord_message)
+        except KeyError:
+            logging.warning("Deleted a message from unkown chat.")
         except Exception as e:
             logging.exception("Exception while sending discord message")
             self.forward_q.append((msg, work))
