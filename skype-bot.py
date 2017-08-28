@@ -166,7 +166,7 @@ class ApplicationDiscord(discord.Client):
             self.EditMessage = EditMessage()
             self.EditMessage.discord = self
             self.Skype.EditMessage = self.EditMessage
-            for k, v in config.ch.items():
+            for k, v in list(config.ch.items()):
                 if v.isdigit():
                     config.ch[k] = self.get_channel(v)
             self.run_loop()
