@@ -6,6 +6,7 @@ import re
 import skpy
 import logging
 from config import *
+from bs4 import BeautifulSoup
 
 
 class Rex(dict):
@@ -73,31 +74,42 @@ class EditMessage():
         except TypeError:
             return ""
 
-    def edit_skype_message(self, message: skpy.SkypeMsg):
+    # TODO WebSkype quote emojis broken
+    @staticmethod
+    def edit_skype_quote(message):
         right_mes = ""
-        if "<quote" in message.content:
-            mes = message.content.split(">")
-            for index, mes_split_item in enumerate(mes):
-                if "</legacyquote" in mes_split_item:
-                    if not "&lt;&lt;&lt;" in mes_split_item:
-                        right_mes += f">{mes_split_item[:-13]}\n"
-                if "<legacyquote" in mes_split_item:
-                    if len(mes_split_item) != 12:
-                        right_mes += f" {mes_split_item[:-12]}\n\n\n"
-            mes = message.content.split("</quote>")[-1]
-            message.content = right_mes + mes
+        match_next = False
+        soup = BeautifulSoup(message, "html.parser")
+        for string_text in soup.find_all(text=True):
+            if re.search(rex["\[.*?\d+:\d+:\d+\]"], string_text):
+                right_mes += f">{string_text}\n"
+                match_next = True
+            elif "<<<" in string_text:
+                pass
+            elif match_next:
+                right_mes += f"{string_text}\n\n"
+            else:
+                right_mes += f"{string_text}"
 
-        skype_con = self.markup(message)
-        skype_con = skype_con.split(" ")
-        # Search and replace user mention with the discord code for mentions
-        for index, sky_msg in enumerate(skype_con):
-            if sky_msg in config.emoji:
-                if "|"  in config.emoji[sky_msg]:
-                    skype_con[index] = f":{config.emoji[sky_msg][:-2]}:"
-                    continue
+        return right_mes
+
+    @staticmethod
+    def edit_skype_emoji(message):
+        message = message.replace("~(", " ~(").replace(")~", ")~ ").replace("\n", " ||| ").split(" ")
+        for index, sky_msg in enumerate(message):
+            emoji = re.match(rex["~.*?~"], sky_msg)
+            if emoji:
+                if emoji.group() in config.emoji:
+                    emoji = config.emoji[emoji.group()].split("|")[0]
+                    message[index] = f":{emoji}:"
                 else:
-                    skype_con[index] = f":{config.emoji[sky_msg]}:"
-                    continue
+                    logging.warning(f"Missing Emoji {emoji.group()} in emoji.json.")
+
+        return " ".join(message)
+
+    def edit_skype_mention(self, message):
+        message = message.replace("\n", " ||| ").split(" ")
+        for index, sky_msg in enumerate(message):
             username = re.match(rex["@(\w+)"], sky_msg)
             if username:
                 user_id = None
@@ -113,15 +125,27 @@ class EditMessage():
                         user_id = self.discord.all_members_nick[username.group(1)]
 
                 if user_id:
-                    skype_con[index] = f"<@{user_id}> "
+                    message[index] = f"<@{user_id}> "
 
-        message_con = " ".join(skype_con)
-        message_con = message_con.replace("{code}", "```").replace("&lt;&lt;&lt;", "").replace("Edited previous message:", "")
+        return " ".join(message)
 
-        return message_con
+    def edit_skype_message(self, message: skpy.SkypeMsg):
+        msg_content = self.markup(message)
+        if "</quote>" in msg_content:
+            msg_content = self.edit_skype_quote(msg_content)
 
+        if "~" in msg_content:
+            msg_content = self.edit_skype_emoji(msg_content)
+
+        if "@" in msg_content:
+            msg_content = self.edit_skype_mention(msg_content)
+        msg_content = msg_content.replace("{code}", "```").replace(" ||| ", "\n").replace("Edited previous message:", "")
+
+        return msg_content
+
+    # TODO cleanup
     async def edit_discord_message(self, content, message):
-        splitted_message = content.replace("\n", " \n ").split(" ")
+        splitted_message = content.replace("\n", " ||| ").split(" ")
         for index, x in enumerate(splitted_message):
             if re.search("http", x):
                 splitted_message[index] = f"<a href=\"{x}\">{x}</a>"
@@ -159,7 +183,7 @@ class EditMessage():
                 mention = f"#{mention.name}"
                 splitted_message[index] = mention
         content = " ".join(splitted_message)
-        content = content.replace("{code}", "```")
+        content = content.replace("{code}", "```").replace(" ||| ", "\n")
         if not message.attachments:
             content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.name}: </b> {content}"
         else:
