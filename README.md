@@ -32,6 +32,17 @@ To run this project you will need:
 
 Bots can be copied freely from the source code if you just wish to make a bot. 
 However running this repository requires the above listed requirements.
+
+# Example Picture
+Discord -> Skype
+
+![alt text](https://0x0.st/RTB.png)
+![alt text](https://0x0.st/RTa.png)
+
+Skype -> Discord
+
+![alt text](https://0x0.st/RTM.png)
+![alt text](https://0x0.st/RTu.png)
   
 # Thanks  
 BluBb_mADe, dark_star90 
