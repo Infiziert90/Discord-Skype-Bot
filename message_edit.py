@@ -5,8 +5,10 @@
 import re
 import skpy
 import logging
+import datetime
 from config import *
 from bs4 import BeautifulSoup
+
 
 
 class Rex(dict):
@@ -84,6 +86,12 @@ class EditMessage():
             if re.search(rex["\[.*?\d+:\d+:\d+\]"], string_text):
                 right_mes += f">{string_text}\n"
                 match_next = True
+            elif re.search(rex["\[\d{10}\]"], string_text):
+                timestamp = re.search(rex["\[\d{10}\]"], string_text)
+                correct_date = datetime.datetime.fromtimestamp(int(timestamp.group()[1:-1])).strftime('%a %d %b %H:%M:%S')
+                string_text = re.sub(rex["\[\d{10}\]"], f"[{correct_date}]", string_text)
+                right_mes += f">{string_text}\n"
+                match_next = True
             elif "<<<" in string_text:
                 pass
             elif match_next:
@@ -95,7 +103,7 @@ class EditMessage():
 
     @staticmethod
     def edit_skype_emoji(message):
-        message = message.replace("~(", " ~(").replace(")~", ")~ ").replace("\n", " ||| ").split(" ")
+        message = message.replace("~(", " ~(").replace(")~", ")~ ").replace("\n", ";;|||;;").split(" ")
         for index, sky_msg in enumerate(message):
             emoji = re.match(rex["~.*?~"], sky_msg)
             if emoji:
@@ -108,7 +116,7 @@ class EditMessage():
         return " ".join(message)
 
     def edit_skype_mention(self, message):
-        message = message.replace("\n", " ||| ").split(" ")
+        message = message.replace("\n", ";;|||;;").split(" ")
         for index, sky_msg in enumerate(message):
             username = re.match(rex["@(\w+)"], sky_msg)
             if username:
@@ -139,13 +147,13 @@ class EditMessage():
 
         if "@" in msg_content:
             msg_content = self.edit_skype_mention(msg_content)
-        msg_content = msg_content.replace("{code}", "```").replace(" ||| ", "\n").replace("Edited previous message:", "")
+        msg_content = msg_content.replace("{code}", "```").replace(";;|||;;", "\n").replace("Edited previous message:", "")
 
         return msg_content
 
     # TODO cleanup
     async def edit_discord_message(self, content, message):
-        splitted_message = content.replace("\n", " ||| ").split(" ")
+        splitted_message = content.replace("\n", ";;|||;;").split(" ")
         for index, x in enumerate(splitted_message):
             if re.search("http", x):
                 splitted_message[index] = f"<a href=\"{x}\">{x}</a>"
@@ -183,7 +191,7 @@ class EditMessage():
                 mention = f"#{mention.name}"
                 splitted_message[index] = mention
         content = " ".join(splitted_message)
-        content = content.replace("{code}", "```").replace(" ||| ", "\n")
+        content = content.replace("{code}", "```").replace(";;|||;;", "\n")
         if not message.attachments:
             content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.name}: </b> {content}"
         else:

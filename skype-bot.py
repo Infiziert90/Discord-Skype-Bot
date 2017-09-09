@@ -101,7 +101,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
 
     def update_internal_msg(self, skype_msg_obj, discord_msg_obj):
         self.message_dict[discord_msg_obj.id] = skype_msg_obj
-        asyncio.get_event_loop().call_later(3600, lambda : self.message_dict.pop(discord_msg_obj.id, None))
+        asyncio.get_event_loop().call_later(36000, lambda : self.message_dict.pop(discord_msg_obj.id, None))
 
     def get_forbidden_list(self):
         self.skype_forbidden = [self.user.id]
@@ -222,7 +222,7 @@ class ApplicationDiscord(discord.Client):
 
     def update_internal_msg(self, skype_msg_obj: skpy.SkypeMsg, discord_msg_obj):
         self.message_dict[skype_msg_obj.clientId] = discord_msg_obj
-        asyncio.get_event_loop().call_later(3600, lambda : self.message_dict.pop(skype_msg_obj.clientId, None))
+        asyncio.get_event_loop().call_later(36000, lambda : self.message_dict.pop(skype_msg_obj.clientId, None))
 
     def get_forbidden_list(self):
         self.discord_forbidden = [self.user.id]
