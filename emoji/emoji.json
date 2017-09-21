@@ -251,6 +251,8 @@
   "owl": "~(tandoori)~",
   "frowning": "~:(~",
   "turkey": "~(turkey)~",
+  "thumbsup|3": "~(like)~",
+  "penguin": "~(hedgehog)~",
 
   "####CUSTOM_EMOJI####": "####SKYPE_EMOJI####(only discord->skype)",
   "rope_thinking": "(๑و•̀ㅅ•́)و",
