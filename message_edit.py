@@ -70,21 +70,22 @@ class EditMessage:
                 return f"From **{message.user.name}**:", file_tuple
             return f"From **{message.user.name}**:\n Can't send file, 8mb limit, thx discord.", None
 
-    def inspect_skype_content_edit(self, message: skpy.SkypeMsg) -> str:
+    def inspect_skype_content_edit(self, message: skpy.SkypeMsg) -> tuple:
         try:
             if "<e_m ts=\"" in message.content:
                 if len(message.content.split("<e_m ts=\"")[0]) > 25:
                     message_con = self.edit_skype_message(message)
-                    return f"**{message.user.name}**: {message_con}"
+                    return f"**{message.user.name}**: {message_con}", None
                 else:
-                    return ""
+                    return "", None
             else:
                 message_con = self.edit_skype_message(message)
-                return f"**{message.user.name}**: {message_con}"
+                return f"**{message.user.name}**: {message_con}", None
         except TypeError:
-            return ""
+            return "", None
 
     # TODO WebSkype quote emojis broken
+    # TODO Fix hieizan quotes.
     @staticmethod
     def edit_skype_quote(message):
         right_mes = ""
