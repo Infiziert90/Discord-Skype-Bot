@@ -16,7 +16,7 @@ if not sys.version_info[:2] >= (3, 6):
     print("Error: requires python 3.6 or newer")
     exit(1)
 
-
+# TODO fix "Couldn't retrieve PPFT from login form" error
 class AsyncSkype(skpy.SkypeEventLoop):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -61,13 +61,13 @@ class AsyncSkype(skpy.SkypeEventLoop):
             return
         if isinstance(event, skpy.SkypeNewMessageEvent):
             if event.msg.chat.id in config.ch:
-                event.msg.content = self.EditMessage.inspect_skype_content(event.msg)
-                self.discord.enque(event.msg, work=1)
+                event.msg.content, sky_file = self.EditMessage.inspect_skype_content(event.msg)
+                self.discord.enque(event.msg, sky_file, work=1)
         elif isinstance(event, skpy.SkypeEditMessageEvent):
             if event.msg.chat.id in config.ch:
-                content = self.EditMessage.inspect_skype_content_edit(event.msg)
+                content, sky_file = self.EditMessage.inspect_skype_content_edit(event.msg)
                 event.msg.content = content
-                self.discord.enque(event.msg, work=2 if event.msg.content else 3)
+                self.discord.enque(event.msg, sky_file, work=2 if event.msg.content else 3)
 
     def send_message(self, msg, content, work, new_msg):
         try:
@@ -87,7 +87,6 @@ class AsyncSkype(skpy.SkypeEventLoop):
         except Exception as e:
             logging.exception("Exception in skype edit_message")
             self.forward_q.append((msg, content, work, new_msg))
-
 
     def delete_message(self, msg, content, work, new_msg):
         if msg.id not in self.message_dict:
@@ -123,8 +122,8 @@ class ApplicationDiscord(discord.Client):
         self.start_tuple = None
         self.first_run = True
 
-    def enque(self, msg, work):
-        self.forward_q.append((msg, work))
+    def enque(self, msg, sky_file, work):
+        self.forward_q.append((msg, sky_file, work))
 
     def run_loop(self):
         asyncio.ensure_future(self.main_loop())
@@ -134,13 +133,13 @@ class ApplicationDiscord(discord.Client):
             while True:
                 await asyncio.sleep(0.01)  # all the other things
                 while self.forward_q:
-                    msg, work= self.forward_q.popleft()
+                    msg, file, work = self.forward_q.popleft()
                     if work == 1:
-                        await self.discord_send_message(msg, work)
+                        await self.discord_send_message(msg, file, work)
                     elif work == 2:
-                        await self.discord_edit_message(msg, work)
+                        await self.discord_edit_message(msg, file, work)
                     else:
-                        await self.discord_delete_message(msg, work)
+                        await self.discord_delete_message(msg, file, work)
         except Exception as e:
             logging.exception("exception in discord main loop")
             self.run_loop()
@@ -185,23 +184,25 @@ class ApplicationDiscord(discord.Client):
                 content = await self.EditMessage.edit_discord_message(content, message)
                 self.Skype.enque(old_message, content=content, work=2, new_msg=message)
 
-
     async def on_message_delete(self, message):
         if not message.content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden:
             if message.channel in config.ch:
                 self.Skype.enque(message, content=None, work=3, new_msg=None)
 
-    async def discord_send_message(self, msg, work):
+    async def discord_send_message(self, msg, file, work):
         try:
-            discord_message = await self.send_message(config.ch[msg.chat.id], msg.content)
+            if file:
+                discord_message = await self.send_file(config.ch[msg.chat.id], file[0], filename=file[1], content=msg.content)
+            else:
+                discord_message = await self.send_message(config.ch[msg.chat.id], msg.content)
             self.update_internal_msg(msg, discord_message)
         except KeyError:
             logging.warning("Deleted a message from unkown chat.")
         except Exception as e:
             logging.exception("Exception while sending discord message")
-            self.forward_q.append((msg, work))
+            self.forward_q.append((msg, file, work))
 
-    async def discord_edit_message(self, msg: skpy.SkypeMsg, work):
+    async def discord_edit_message(self, msg, file, work):
         if msg.clientId not in self.message_dict:
             return
         try:
@@ -209,16 +210,16 @@ class ApplicationDiscord(discord.Client):
             self.update_internal_msg(msg, discord_message)
         except Exception as e:
             logging.exception("Exception in discord_edit_message")
-            self.forward_q.append((msg, work))
+            self.forward_q.append((msg, file, work))
 
-    async def discord_delete_message(self, msg, work):
+    async def discord_delete_message(self, msg, file, work):
         if msg.clientId not in self.message_dict:
             return
         try:
             await self.delete_message(self.message_dict[msg.clientId])
         except Exception as e:
             logging.exception("Exception in discord_delete_message")
-            self.forward_q.append((msg, work))
+            self.forward_q.append((msg, file, work))
 
     def update_internal_msg(self, skype_msg_obj: skpy.SkypeMsg, discord_msg_obj):
         self.message_dict[skype_msg_obj.clientId] = discord_msg_obj
@@ -249,6 +250,7 @@ def main():
     logging.info("Start discord run")
     app = ApplicationDiscord()
     app.run(config.MAIN.login_token)
+
 
 if __name__ == "__main__":
     main()

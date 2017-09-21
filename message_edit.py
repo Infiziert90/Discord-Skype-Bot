@@ -3,12 +3,14 @@
 # Copyright (c) 2017 Toni Hänsel
 
 import re
+import tempfile
+
+import io
 import skpy
 import logging
 import datetime
 from config import *
 from bs4 import BeautifulSoup
-
 
 
 class Rex(dict):
@@ -24,7 +26,7 @@ class Rex(dict):
 rex = Rex()
 
 
-class EditMessage():
+class EditMessage:
     def __init__(self):
         self.discord = None
 
@@ -42,25 +44,31 @@ class EditMessage():
         text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'")
         return text
 
-    def inspect_skype_content(self, message: skpy.SkypeMsg) -> str:
+    def inspect_skype_content(self, message: skpy.SkypeMsg) -> tuple:
         if isinstance(message, skpy.SkypeTextMsg):
             message_con = self.edit_skype_message(message)
-            return f"**{message.user.name}**: {message_con}"
+            return f"**{message.user.name}**: {message_con}", None
         elif isinstance(message, skpy.SkypeAddMemberMsg):
-            return f"**{message.user.name}** joined the chat in skype!"
+            return f"**{message.user.name}** joined the chat in skype!", None
         elif isinstance(message, skpy.SkypeRemoveMemberMsg):
             mes = message.content.split("<target>")[1]
             mes = mes.split("</target>")[0]
             mes = mes[2:]
-            return f"**{mes}** was removed from the chat in skype!"
-        elif isinstance(message, skpy.SkypeFileMsg):
-            mes = message.content.split("url_thumbnail=\"")[1]
-            mes = mes.split("\"")[0]
-            return f"**{message.user.name}** sended a file ... here the preview {mes}"
+            return f"**{mes}** was removed from the chat in skype!", None
         elif isinstance(message, skpy.SkypeImageMsg):
-            mes = message.content.split("url_thumbnail=\"")[1]
-            mes = mes.split("\"")[0]
-            return f"**{message.user.name}** sended a file ... here the preview {mes}"
+            sky_file = io.BytesIO(message.fileContent)
+            if sky_file.getbuffer().nbytes <= 8388222:
+                sky_name = message.file.name
+                file_tuple = (sky_file, sky_name)
+                return f"From **{message.user.name}**:", file_tuple
+            return f"From **{message.user.name}**:\n Can't send picture, 8mb limit, thx discord.", None
+        elif isinstance(message, skpy.SkypeFileMsg):
+            if int(message.file.size) <= 8388222:
+                sky_file = io.BytesIO(message.fileContent)
+                sky_name = message.file.name
+                file_tuple = (sky_file, sky_name)
+                return f"From **{message.user.name}**:", file_tuple
+            return f"From **{message.user.name}**:\n Can't send file, 8mb limit, thx discord.", None
 
     def inspect_skype_content_edit(self, message: skpy.SkypeMsg) -> str:
         try:
