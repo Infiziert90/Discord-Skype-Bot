@@ -3,8 +3,6 @@
 # Copyright (c) 2017 Toni Hänsel
 
 import re
-import tempfile
-
 import io
 import skpy
 import logging
@@ -22,7 +20,6 @@ class Rex(dict):
 
     def get(self, k, flags=0):
         return self.setdefault((k, flags), re.compile(k, flags))
-
 rex = Rex()
 
 
@@ -44,45 +41,41 @@ class EditMessage:
         text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'")
         return text
 
-    def inspect_skype_content(self, message: skpy.SkypeMsg) -> tuple:
-        if isinstance(message, skpy.SkypeTextMsg):
-            message_con = self.edit_skype_message(message)
-            return f"**{message.user.name}**: {message_con}", None
-        elif isinstance(message, skpy.SkypeAddMemberMsg):
-            return f"**{message.user.name}** joined the chat in skype!", None
-        elif isinstance(message, skpy.SkypeRemoveMemberMsg):
-            mes = message.content.split("<target>")[1]
-            mes = mes.split("</target>")[0]
-            mes = mes[2:]
-            return f"**{mes}** was removed from the chat in skype!", None
-        elif isinstance(message, skpy.SkypeImageMsg):
-            sky_file = io.BytesIO(message.fileContent)
-            if sky_file.getbuffer().nbytes <= 8388222:
-                sky_name = message.file.name
-                file_tuple = (sky_file, sky_name)
-                return f"From **{message.user.name}**:", file_tuple
-            return f"From **{message.user.name}**:\n Can't send picture, 8mb limit, thx discord.", None
-        elif isinstance(message, skpy.SkypeFileMsg):
-            if int(message.file.size) <= 8388222:
-                sky_file = io.BytesIO(message.fileContent)
-                sky_name = message.file.name
-                file_tuple = (sky_file, sky_name)
-                return f"From **{message.user.name}**:", file_tuple
-            return f"From **{message.user.name}**:\n Can't send file, 8mb limit, thx discord.", None
+    def inspect_skype_content(self, message: skpy.SkypeMsg) -> str:
+        message_con = self.edit_skype_message(message)
+        return f"**{message.user.name}**: {message_con}"
 
-    def inspect_skype_content_edit(self, message: skpy.SkypeMsg) -> tuple:
+    def inspect_skype_content_edit(self, message: skpy.SkypeMsg) -> str:
         try:
             if "<e_m ts=\"" in message.content:
                 if len(message.content.split("<e_m ts=\"")[0]) > 25:
                     message_con = self.edit_skype_message(message)
-                    return f"**{message.user.name}**: {message_con}", None
+                    return f"**{message.user.name}**: {message_con}"
                 else:
-                    return "", None
+                    return ""
             else:
                 message_con = self.edit_skype_message(message)
-                return f"**{message.user.name}**: {message_con}", None
+                return f"**{message.user.name}**: {message_con}"
         except TypeError:
-            return "", None
+            return ""
+
+    @staticmethod
+    def skype_image_message(message: skpy.SkypeMsg) -> tuple:
+        sky_file = io.BytesIO(message.fileContent)
+        if sky_file.getbuffer().nbytes <= 8388222:
+            sky_name = message.file.name
+            file_tuple = (sky_file, sky_name)
+            return f"From **{message.user.name}**:", file_tuple
+        return f"From **{message.user.name}**:\n Can't send picture, 8mb limit, thx discord.", None
+
+    @staticmethod
+    def skype_file_message(message: skpy.SkypeMsg) -> tuple:
+        if int(message.file.size) <= 8388222:
+            sky_file = io.BytesIO(message.fileContent)
+            sky_name = message.file.name
+            file_tuple = (sky_file, sky_name)
+            return f"From **{message.user.name}**:", file_tuple
+        return f"From **{message.user.name}**:\n Can't send file, 8mb limit, thx discord.", None
 
     # TODO WebSkype quote emojis broken
     # TODO Fix hieizan quotes.

@@ -57,17 +57,28 @@ class AsyncSkype(skpy.SkypeEventLoop):
             self.run_loop()
 
     def onEvent(self, event):
-        if hasattr(event, "msg") and event.msg.user.id in self.skype_forbidden:
+        if not hasattr(event, "msg") or event.msg.user.id in self.skype_forbidden:
             return
-        if isinstance(event, skpy.SkypeNewMessageEvent):
-            if event.msg.chat.id in config.ch:
-                event.msg.content, sky_file = self.EditMessage.inspect_skype_content(event.msg)
-                self.discord.enque(event.msg, sky_file, work=1)
-        elif isinstance(event, skpy.SkypeEditMessageEvent):
-            if event.msg.chat.id in config.ch:
-                content, sky_file = self.EditMessage.inspect_skype_content_edit(event.msg)
-                event.msg.content = content
-                self.discord.enque(event.msg, sky_file, work=2 if event.msg.content else 3)
+
+        if event.msg.chat.id in config.ch:
+            if isinstance(event, skpy.SkypeEditMessageEvent):
+                event.msg.content = self.EditMessage.inspect_skype_content_edit(event.msg)
+                self.discord.enque(event.msg, file=None, work=2 if event.msg.content else 3)
+            elif isinstance(event.msg, skpy.SkypeTextMsg):
+                event.msg.content = self.EditMessage.inspect_skype_content(event.msg)
+                self.discord.enque(event.msg, file=None, work=1)
+            elif isinstance(event.msg, skpy.SkypeAddMemberMsg):
+                event.msg.content = f"**{event.msg.member.name}** joined the chat in skype!"
+                self.discord.enque(event.msg, file=None, work=1)
+            elif isinstance(event.msg, skpy.SkypeRemoveMemberMsg):
+                event.msg.content = f"**{event.msg.member.name}** was removed from the chat in skype!"
+                self.discord.enque(event.msg, file=None, work=1)
+            elif isinstance(event.msg, skpy.SkypeImageMsg):
+                event.msg.content, sky_file = self.EditMessage.skype_image_message(event.msg)
+                self.discord.enque(event.msg, file=sky_file, work=1)
+            elif isinstance(event.msg, skpy.SkypeFileMsg):
+                event.msg.content, sky_file = self.EditMessage.skype_file_message(event.msg)
+                self.discord.enque(event.msg, file=sky_file, work=1)
 
     def send_message(self, msg, content, work, new_msg):
         try:
@@ -100,7 +111,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
 
     def update_internal_msg(self, skype_msg_obj, discord_msg_obj):
         self.message_dict[discord_msg_obj.id] = skype_msg_obj
-        asyncio.get_event_loop().call_later(36000, lambda : self.message_dict.pop(discord_msg_obj.id, None))
+        asyncio.get_event_loop().call_later(36000, lambda: self.message_dict.pop(discord_msg_obj.id, None))
 
     def get_forbidden_list(self):
         self.skype_forbidden = [self.user.id]
@@ -116,14 +127,14 @@ class ApplicationDiscord(discord.Client):
         self.all_members = {}
         self.all_members_nick = {}
         self.message_dict = {}
-        self.forward_q: Deque[Tuple[skpy.SkypeMsg, int]] = deque()
+        self.forward_q: Deque[Tuple[skpy.SkypeMsg, tuple, int]] = deque()
         self.Skype: AsyncSkype = None
         self.EditMessage: EditMessage = None
         self.start_tuple = None
         self.first_run = True
 
-    def enque(self, msg, sky_file, work):
-        self.forward_q.append((msg, sky_file, work))
+    def enque(self, msg, file, work):
+        self.forward_q.append((msg, file, work))
 
     def run_loop(self):
         asyncio.ensure_future(self.main_loop())
@@ -170,24 +181,29 @@ class ApplicationDiscord(discord.Client):
                     config.ch[k] = self.get_channel(v)
             self.run_loop()
 
+    # TODO Add embed support
     async def on_message(self, message):
         content = message.content
-        if not content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden and not message.author.name in self.discord_forbidden:
-            if message.channel in config.ch:
-                content = await self.EditMessage.edit_discord_message(content, message)
-                self.Skype.enque(message, content=content, work=1, new_msg=None)
+        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+            return
+        if message.channel in config.ch:
+            content = await self.EditMessage.edit_discord_message(content, message)
+            self.Skype.enque(message, content=content, work=1, new_msg=None)
 
     async def on_message_edit(self, old_message, message):
         content = message.content
-        if not message.content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden:
-            if message.channel in config.ch:
-                content = await self.EditMessage.edit_discord_message(content, message)
-                self.Skype.enque(old_message, content=content, work=2, new_msg=message)
+        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+            return
+        if message.channel in config.ch:
+            content = await self.EditMessage.edit_discord_message(content, message)
+            self.Skype.enque(old_message, content=content, work=2, new_msg=message)
 
     async def on_message_delete(self, message):
-        if not message.content.startswith(self.start_tuple) and not message.author.id in self.discord_forbidden:
-            if message.channel in config.ch:
-                self.Skype.enque(message, content=None, work=3, new_msg=None)
+        content = message.content
+        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+            return
+        if message.channel in config.ch:
+            self.Skype.enque(message, content=None, work=3, new_msg=None)
 
     async def discord_send_message(self, msg, file, work):
         try:
@@ -223,7 +239,7 @@ class ApplicationDiscord(discord.Client):
 
     def update_internal_msg(self, skype_msg_obj: skpy.SkypeMsg, discord_msg_obj):
         self.message_dict[skype_msg_obj.clientId] = discord_msg_obj
-        asyncio.get_event_loop().call_later(36000, lambda : self.message_dict.pop(skype_msg_obj.clientId, None))
+        asyncio.get_event_loop().call_later(36000, lambda: self.message_dict.pop(skype_msg_obj.clientId, None))
 
     def get_forbidden_list(self):
         self.discord_forbidden = [self.user.id]
