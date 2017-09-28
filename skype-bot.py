@@ -174,7 +174,7 @@ class ApplicationDiscord(discord.Client):
             self.Skype = AsyncSkype(config.MAIN.skype_email, config.MAIN.skype_password)
             self.Skype.discord = self
             self.EditMessage = EditMessage()
-            self.EditMessage.discord = self
+            self.EditMessage.discord_client = self
             self.Skype.EditMessage = self.EditMessage
             for k, v in list(config.ch.items()):
                 if v.isdigit():
@@ -256,9 +256,9 @@ class ApplicationDiscord(discord.Client):
 
     def fill_member_list(self):
         for user in self.get_all_members():
-            self.all_members[user.name] = user.id
+            self.all_members[user.name.lower()] = user.id
             if user.nick:
-                self.all_members_nick[user.nick] = user.id
+                self.all_members_nick[user.nick.lower()] = user.id
 
 
 def main():
