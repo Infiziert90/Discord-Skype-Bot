@@ -17,7 +17,7 @@ You will find a new file in your config file folder.
 
 Start the bot by executing::
 
-    $ python skype-bot.py
+    $ python bot.py
 
 That's it.
 
