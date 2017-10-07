@@ -1,7 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# Copyright (c) 2017 Toni Hänsel
-
 import os
 import sys
 import asyncio
