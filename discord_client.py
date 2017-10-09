@@ -82,8 +82,7 @@ class ApplicationDiscord(discord.Client):
     # TODO Add embed support
     async def on_message(self, message):
         content = message.content
-        if content.startswith(
-                self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
             return
         if message.channel in config.ch:
             content = await self.to_skype_format(content, message)
@@ -91,8 +90,7 @@ class ApplicationDiscord(discord.Client):
 
     async def on_message_edit(self, old_message, message):
         content = message.content
-        if content.startswith(
-                self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
             return
         if message.channel in config.ch:
             content = await self.to_skype_format(content, message)
@@ -100,8 +98,7 @@ class ApplicationDiscord(discord.Client):
 
     async def on_message_delete(self, message):
         content = message.content
-        if content.startswith(
-                self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
             return
         if message.channel in config.ch:
             self.skype.enque(message, content=None, work=3, new_msg=None)

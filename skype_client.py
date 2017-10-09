@@ -69,6 +69,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
         except Exception as e:
             logging.exception("Exception in skype main loop")
             self.dead = True
+
         if self.dead:
             self.reinstanciate(self)
 
@@ -78,10 +79,10 @@ class AsyncSkype(skpy.SkypeEventLoop):
 
         if event.msg.chat.id in config.ch:
             if type(event) == skpy.SkypeEditMessageEvent:
-                event.msg.content = self.inspect_skype_content_edit(event.msg)
+                event.msg.content = self.inspect_skype_editmsg_content(event.msg)
                 self.discord.enque(event.msg, file=None, work=2 if event.msg.content else 3)
             elif type(event.msg) == skpy.SkypeTextMsg:
-                event.msg.content = self.inspect_skype_content(event.msg)
+                event.msg.content = self.inspect_skype_msg_content(event.msg)
                 self.discord.enque(event.msg, file=None, work=1)
             elif type(event.msg) == skpy.SkypeAddMemberMsg:
                 event.msg.content = f"**{event.msg.member.name}** joined the chat in skype!"
@@ -90,10 +91,10 @@ class AsyncSkype(skpy.SkypeEventLoop):
                 event.msg.content = f"**{event.msg.member.name}** was removed from the chat in skype!"
                 self.discord.enque(event.msg, file=None, work=1)
             elif type(event.msg) == skpy.SkypeImageMsg:
-                event.msg.content, sky_file = self.skype_image_message(event.msg)
+                event.msg.content, sky_file = self.skype_to_discord_image(event.msg)
                 self.discord.enque(event.msg, file=sky_file, work=1)
             elif type(event.msg) == skpy.SkypeFileMsg:
-                event.msg.content, sky_file = self.skype_file_message(event.msg)
+                event.msg.content, sky_file = self.skype_to_discord_file(event.msg)
                 self.discord.enque(event.msg, file=sky_file, work=1)
 
     def send_message(self, msg, content, work, new_msg):
@@ -150,15 +151,14 @@ class AsyncSkype(skpy.SkypeEventLoop):
         text = re.sub(rex["</?pre.*?>"], "{code}", text)
         text = re.sub(rex['<a.*?href="(.*?)">.*?</a>'], r"\1", text)
         text = re.sub(rex['<at.*?id="8:(.*?)">.*?</at>'], r"@\1", text)
-        text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace(
-            "&apos;", "'")
+        text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'")
         return text
 
-    def inspect_skype_content(self, message: skpy.SkypeMsg) -> str:
+    def inspect_skype_msg_content(self, message: skpy.SkypeMsg) -> str:
         message_con = self.to_discord_format(message)
         return f"**{message.user.name}**: {message_con}"
 
-    def inspect_skype_content_edit(self, message: skpy.SkypeMsg) -> str:
+    def inspect_skype_editmsg_content(self, message: skpy.SkypeMsg) -> str:
         if not message.content:
             return ""
 
@@ -173,7 +173,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
             return f"**{message.user.name}**: {message_con}"
 
     @staticmethod
-    def skype_image_message(message: skpy.SkypeMsg) -> tuple:
+    def skype_to_discord_image(message: skpy.SkypeMsg) -> tuple:
         sky_file = io.BytesIO(message.fileContent)
         if sky_file.getbuffer().nbytes <= 8388222:
             sky_name = message.file.name
@@ -182,7 +182,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
         return f"From **{message.user.name}**:\n Can't send picture, 8mb limit, thx discord.", None
 
     @staticmethod
-    def skype_file_message(message: skpy.SkypeMsg) -> tuple:
+    def skype_to_discord_file(message: skpy.SkypeMsg) -> tuple:
         if int(message.file.size) <= 8388222:
             sky_file = io.BytesIO(message.fileContent)
             sky_name = message.file.name
@@ -193,7 +193,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
     # TODO WebSkype quote emojis broken
     # TODO Uniform time appearance
     @staticmethod
-    def edit_skype_quote(message) -> str:
+    def skype_to_discord_quote(message) -> str:
         right_mes = ""
         match_next = False
         soup = BeautifulSoup(message, "html.parser")
@@ -226,7 +226,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
     def to_discord_format(self, message: skpy.SkypeMsg) -> str:
         msg_content = self.markup(message)
         if "</quote>" in msg_content:
-            msg_content = self.edit_skype_quote(msg_content)
+            msg_content = self.skype_to_discord_quote(msg_content)
 
         if "~" in msg_content:
             msg_content = msg_content.replace("~(", " ~(").replace(")~", ")~ ")
