@@ -229,8 +229,8 @@ class AsyncSkype(skpy.SkypeEventLoop):
             msg_content = self.edit_skype_quote(msg_content)
 
         if "~" in msg_content:
-            message = message.replace("~(", " ~(").replace(")~", ")~ ")
-            line_splits = message.split('\n')
+            msg_content = msg_content.replace("~(", " ~(").replace(")~", ")~ ")
+            line_splits = msg_content.split('\n')
             for li, line in enumerate(line_splits):
                 words_split = line.split(" ")
                 for index, sky_msg in enumerate(words_split):
