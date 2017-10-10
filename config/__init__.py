@@ -81,9 +81,7 @@ def load_config():
             val = AttrDict(val)
         config[key] = val
 
-
     debug = int(config.MAIN.get("debug", 0))
-
     if debug:
         os.environ["PYTHONASYNCIODEBUG"] = "1"
         # The AIO modules need to be reloaded because of the new env var

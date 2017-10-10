@@ -198,19 +198,25 @@ class AsyncSkype(skpy.SkypeEventLoop):
         match_next = False
         soup = BeautifulSoup(message, "html.parser")
         for string_text in soup.find_all(text=True):
-            if re.search(rex["\[.*?\d+:\d+:\d+\]"], string_text):
+            if re.search(rex["\[.*?\d+:\d+:\d+\]"], string_text):  # Time 12/12/2012 11:11:11
                 right_mes += f"\n```{string_text}\n"
                 match_next = True
-            elif re.search(rex["\[\d{10}\]"], string_text):
+            elif re.search(rex["\[\d{10}\]"], string_text):  # Timestamp 1507624413
                 timestamp = re.search(rex["\[\d{10}\]"], string_text)
                 correct_date = datetime.fromtimestamp(int(timestamp.group()[1:-1])).strftime('%H:%M:%S')
                 string_text = re.sub(rex["\[\d{10}\]"], f"[{correct_date}]", string_text)
                 right_mes += f"```{string_text}\n"
                 match_next = True
-            elif re.search(rex["\[.*?\d+:\d+:\d+ \D+\]"], string_text):
+            elif re.search(rex["\[.*?\d+:\d+:\d+ \D+\]"], string_text):  # Time 12/12/2012 11:11:11 PM
                 time = re.search(rex["\[.*?\d+:\d+:\d+ \D+\]"], string_text)
-                correct_date = datetime.strptime(time.group()[1:-1], "%I:%M:%S %p").strftime("%H:%M:%S")
+                correct_date = datetime.strptime(time.group()[1:-1], "%m/%d/%Y %I:%M:%S %p").strftime("%H:%M:%S")
                 string_text = re.sub(rex["\[.*?\d+:\d+:\d+ \D+\]"], f"[{correct_date}]", string_text)
+                right_mes += f"```{string_text}\n"
+                match_next = True
+            elif re.search(rex["\[\d+:\d+:\d+ \D+\]"], string_text):  # Time 11:11:11 PM
+                time = re.search(rex["\[\d+:\d+:\d+ \D+\]"], string_text)
+                correct_date = datetime.strptime(time.group()[1:-1], "%I:%M:%S %p").strftime("%H:%M:%S")
+                string_text = re.sub(rex["\[\d+:\d+:\d+ \D+\]"], f"[{correct_date}]", string_text)
                 right_mes += f"```{string_text}\n"
                 match_next = True
             elif "<<<" in string_text:
