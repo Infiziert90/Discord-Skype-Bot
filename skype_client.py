@@ -91,10 +91,10 @@ class AsyncSkype(skpy.SkypeEventLoop):
                 event.msg.content = f"**{event.msg.member.name}** was removed from the chat in skype!"
                 self.discord.enque(event.msg, file=None, work=1)
             elif type(event.msg) == skpy.SkypeImageMsg:
-                event.msg.content, sky_file = self.skype_to_discord_image(event.msg)
+                event.msg.content, sky_file = self.skype_to_discord_file(event.msg, filetype="image")
                 self.discord.enque(event.msg, file=sky_file, work=1)
             elif type(event.msg) == skpy.SkypeFileMsg:
-                event.msg.content, sky_file = self.skype_to_discord_file(event.msg)
+                event.msg.content, sky_file = self.skype_to_discord_file(event.msg, filetype="file")
                 self.discord.enque(event.msg, file=sky_file, work=1)
 
     def send_message(self, msg, content, work, new_msg):
@@ -173,30 +173,33 @@ class AsyncSkype(skpy.SkypeEventLoop):
             return f"**{message.user.name}**: {message_con}"
 
     @staticmethod
-    def skype_to_discord_image(message: skpy.SkypeMsg) -> tuple:
-        sky_file = io.BytesIO(message.fileContent)
-        if sky_file.getbuffer().nbytes <= 8388222:
-            sky_name = message.file.name
-            file_tuple = (sky_file, sky_name)
-            return f"From **{message.user.name}**:", file_tuple
-        return f"From **{message.user.name}**:\n Can't send picture, 8mb limit, thx discord.", None
+    def get_file_from_skype_cdn(message: skpy.SkypeMsg):
+        for _ in range(5):
+            try:
+                file = io.BytesIO(message.fileContent)
+                filename = message.file.name
+                return file, filename
+            except skpy.core.SkypeApiException:
+                continue
+        logging.info("skype: file was not available")
+        return None
 
-    @staticmethod
-    def skype_to_discord_file(message: skpy.SkypeMsg) -> tuple:
-        if int(message.file.size) <= 8388222:
-            sky_file = io.BytesIO(message.fileContent)
-            sky_name = message.file.name
-            file_tuple = (sky_file, sky_name)
+    def skype_to_discord_file(self, message: skpy.SkypeMsg, filetype: str) -> tuple:
+        file_tuple = self.get_file_from_skype_cdn(message)
+        if file_tuple is None:
+            return f"**{message.user.name}** sent a {filetype} in Skype which cannot be relayed.", None
+        elif file_tuple[0].getbuffer().nbytes <= 8388222:
             return f"From **{message.user.name}**:", file_tuple
-        return f"From **{message.user.name}**:\n Can't send file, 8mb limit, thx discord.", None
+
+        return f"From **{message.user.name}**:\n Can't send {filetype} due to filesize limitations.", None
 
     # TODO WebSkype quote emojis broken
     # TODO Uniform time appearance
     @staticmethod
-    def skype_to_discord_quote(message) -> str:
+    def skype_to_discord_quote(msg_content: str) -> str:
         right_mes = ""
         match_next = False
-        soup = BeautifulSoup(message, "html.parser")
+        soup = BeautifulSoup(msg_content, "html.parser")
         for string_text in soup.find_all(text=True):
             if re.search(rex["\[.*?\d+:\d+:\d+\]"], string_text):  # Time 12/12/2012 11:11:11
                 right_mes += f"\n```{string_text}\n"
