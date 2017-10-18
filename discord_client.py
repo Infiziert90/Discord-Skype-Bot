@@ -185,7 +185,7 @@ class ApplicationDiscord(discord.Client):
 
                 mention = re.match(rex["<@!?(\d+)>"], word)
                 if mention:
-                    mention = await self.discord_client.get_user_info(mention.group(1))
+                    mention = await self.get_user_info(mention.group(1))
                     mention = f"@{mention.name}"
                     word_splits[index] = mention
                     continue
@@ -201,7 +201,7 @@ class ApplicationDiscord(discord.Client):
 
                 mention_channel = re.match(rex["<#(\d+)>"], word)
                 if mention_channel:
-                    mention = self.discord_client.get_channel(mention_channel.group(1))
+                    mention = self.get_channel(mention_channel.group(1))
                     mention = f"#{mention.name}"
                     word_splits[index] = mention
 
