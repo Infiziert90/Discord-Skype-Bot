@@ -72,6 +72,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
             self.dead = True
 
         if self.dead:
+            logging.exception(f"{str(datetime.now())} Exception in skype main loop: Try reinstancing")
             self.reinstanciate(self)
 
     def onEvent(self, event):

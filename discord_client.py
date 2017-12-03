@@ -56,8 +56,7 @@ class ApplicationDiscord(discord.Client):
             self.run_loop()
 
     async def on_ready(self):
-        logging.info(
-            f'Logged in as\nUsername: {self.user.name}\nID: {self.user.id}\nAPI Version: {discord.__version__}')
+        logging.info(f'Logged in \nUsername: {self.user.name}\nID: {self.user.id}\nAPI Version: {discord.__version__}')
         gameplayed = config.MAIN.get("gameplayed", "Yuri is Love")
         if gameplayed:
             game = discord.Game(name=gameplayed)
@@ -82,7 +81,11 @@ class ApplicationDiscord(discord.Client):
     # TODO Add embed support
     async def on_message(self, message):
         content = message.content
-        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+        if content.startswith(f"{config.MAIN.command_prefix}temp_bridge"):
+            await self.create_temp_bridge(message)
+        if content.startswith(self.start_tuple):
+            return
+        if message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
             return
         if message.channel in config.ch:
             content = await self.to_skype_format(content, message)
@@ -90,7 +93,9 @@ class ApplicationDiscord(discord.Client):
 
     async def on_message_edit(self, old_message, message):
         content = message.content
-        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+        if content.startswith(self.start_tuple):
+            return
+        if message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
             return
         if message.channel in config.ch:
             content = await self.to_skype_format(content, message)
@@ -98,7 +103,9 @@ class ApplicationDiscord(discord.Client):
 
     async def on_message_delete(self, message):
         content = message.content
-        if content.startswith(self.start_tuple) or message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
+        if content.startswith(self.start_tuple):
+            return
+        if message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
             return
         if message.channel in config.ch:
             self.skype.enque(message, content=None, work=3, new_msg=None)
@@ -138,6 +145,42 @@ class ApplicationDiscord(discord.Client):
     def update_internal_msg(self, skype_msg_obj: skpy.SkypeMsg, discord_msg_obj):
         self.message_dict[skype_msg_obj.clientId] = discord_msg_obj
         asyncio.get_event_loop().call_later(36000, lambda: self.message_dict.pop(skype_msg_obj.clientId, None))
+
+    async def create_temp_bridge(self, msg: discord.Message):
+        if msg.author.id in config.admin_id:
+            content = msg.content.split(" ")
+            if len(content) != 4:
+                return await self.send_message(msg.channel, content="Input is not correct, pls check it again")
+
+            first_id = content[2].split(":", 1)
+            second_id = content[3].split(":", 1)
+            if len(first_id) != 2 or len(second_id) != 2:
+                return await self.send_message(msg.channel, content="ID input is not correct, pls check it again")
+
+            if first_id[0] == "skype":
+                skype_id = first_id[1]
+                discord_id = second_id[1]
+            elif first_id[0] == "discord":
+                discord_id = first_id[1]
+                skype_id = second_id[1]
+            else:
+                return await self.send_message(msg.channel, content="Input is not correct, pls check it again")
+
+            if content[1] == "add":
+                self.add_temp_bridge(skype_id, discord_id)
+            elif content[1] == "delete":
+                self.delete_temp_bridge(skype_id, discord_id)
+            else:
+                return await self.send_message(msg.channel, content="Method is not correct, pls check it again")
+
+            await self.send_message(msg.channel, content="Done")
+
+    def add_temp_bridge(self, skype_id: str, discord_id: str):
+        config.ch[skype_id] = self.get_channel(discord_id)
+
+    def delete_temp_bridge(self, skype_id, discord_id):
+        config.ch.pop(skype_id, None)
+        config.ch.pop(self.get_channel(discord_id), None)
 
     def get_forbidden_list(self):
         self.discord_forbidden = [self.user.id]

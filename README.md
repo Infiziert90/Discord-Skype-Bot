@@ -1,53 +1,58 @@
 # Discord-Skype-Bot
-Discord-Bot that connect discord and skype. 
+Discord-Bot that connects discord and skype.  
 
-# Work in Progress 
+## Work in Progress 
 
-# Usage
+## Usage
 
-Start with installing the depdencies through ``pip``.
-
-config file (see ``skype-bot.ini``).
-
-Get skype chat-id::
-
+1. Start with installing the dependencies with `pip`.
+2. Change necessary settings in the config file (`skype-bot.ini`).
+3. Get your skype chat-id:
+    ```
     $ python skype-get.py
-
-You will find a new file in your config file folder.
-
-Start the bot by executing::
-
+    ```
+    You will now find a new file in your config folder.  
+4. Start the bot by executing:
+    ```
     $ python bot.py
+    ```
+That’s it.
 
-That's it.
+## Requirements
+To run this project, you will need:
+- Python 3.6
+- SkPy 0.8
+- Pip for Python
+- Your own set of Discord credentials to use for the bot (see https://discordapp.com/developers/docs/intro)
 
-# Requirements
-
-To run this project you will need:
-
-* Python 3.6
-* SkPy 0.8
-* Pip for Python
-* Your own set of Discord credentials to use with Bots
-
-Bots can be copied freely from the source code if you just wish to make a bot. 
-However running this repository requires the above listed requirements.
-
-# Example Picture
+### Temporary Bridges
+You can add/delete a temporary bridge during runtime. Just send a private message to the bot with:  
+```
+YOUR_PREFIXtemp_bridge add skype:SKYPE_CHAT_ID discord:DISCORD_CHAT_ID
+```
+or  
+```
+YOUR_PREFIXtemp_bridge delete skype:SKYPE_CHAT_ID discord:DISCORD_CHAT_ID
+```
+Example:  
+```
+<<temp_bridge add skype:19:47ec9ce6assdasdasdasda@thread.skype discord:386899999999
+```
+## Images
 Discord -> Skype
 
-![alt text](https://0x0.st/RTB.png)
-![alt text](https://0x0.st/RTa.png)
+![Message in Discord](https://0x0.st/RTB.png)
+![Relayed to Skype](https://0x0.st/RTa.png)
 
 Skype -> Discord
 
-![alt text](https://0x0.st/RTM.png)
-![alt text](https://0x0.st/RTu.png)
-  
-# Thanks  
-BluBb_mADe, dark_star90 
+![Message in Skype](https://0x0.st/RTM.png)
+![Relayed to Discord](https://0x0.st/RTu.png)
 
-# Help?
+### Thanks  
+BluBb_mADe, dark_star90, kageru
 
-Add me in discord and write me your problem:
+### Help?
+
+Add me on discord and message me with your problem:
 Infi#8527 

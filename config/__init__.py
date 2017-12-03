@@ -114,5 +114,10 @@ def load_config():
     for unicode, discord_name in emoji_dict.items():
         config.unicode_emoji[unicode] = discord_name
 
+    config.admin_id = []
+    for user_id in config.ADMIN_ID.values():
+        config.admin_id.append(user_id)
+    logging.info(f"Admin:\n{config.admin_id}")
+
 
 __all__ = ['config', 'load_config', 'bidict']
