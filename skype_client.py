@@ -227,7 +227,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
             elif "<<<" in string_text:
                 pass
             elif match_next:
-                right_mes += f"{string_text}```\n\n"
+                right_mes += f"{string_text} ```\n\n"
                 match_next = False
             else:
                 right_mes += f"{string_text}"
