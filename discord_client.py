@@ -201,8 +201,25 @@ class ApplicationDiscord(discord.Client):
             if user.nick:
                 self.all_members_nick[user.nick.lower()] = user.id
 
+    @staticmethod
+    def embeds_to_skype_format(embeds) -> str:
+        formated_embeds = "Embed:"
+        for embed in embeds:
+            title = embed.get("title", None)
+            if title:
+                formated_embeds += f"\n<b raw_pre=\"*\" raw_post=\"*\">Title: </b> {title}"
+            description = embed.get("description", None)
+            if description:
+                formated_embeds += f"\n<b raw_pre=\"*\" raw_post=\"*\"> Description: </b> {description}"
+
+        return formated_embeds
+
     # TODO Code blocks fix?
     async def to_skype_format(self, content, message) -> str:
+        if message.embeds:
+            content = content.replace("[]()", "")
+            content = f"{self.embeds_to_skype_format(message.embeds)}\n{content}"
+
         line_splits = content.split('\n')
         for li, line in enumerate(line_splits):
             word_splits = line.split(" ")

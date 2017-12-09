@@ -23,7 +23,6 @@ class Rex(dict):
 rex = Rex()
 
 
-# TODO Fix K1llerente not found error.
 class AsyncSkype(skpy.SkypeEventLoop):
     def __init__(self, *args, forward_q=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -36,6 +35,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
         self.refresh_token()
         asyncio.ensure_future(self.main_loop())
 
+    # TODO: Remove this hack
     @classmethod
     def reinstanciate(cls, current):
         new_skype = AsyncSkype(config.MAIN.skype_email, config.MAIN.skype_password, forward_q=current.forward_q)
