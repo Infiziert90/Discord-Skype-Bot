@@ -216,7 +216,7 @@ class ApplicationDiscord(discord.Client):
 
     # TODO Code blocks fix?
     async def to_skype_format(self, content, message) -> str:
-        if message.embeds:
+        if message.author.bot and message.embeds:
             content = content.replace("[]()", "")
             content = f"{self.embeds_to_skype_format(message.embeds)}\n{content}"
 
