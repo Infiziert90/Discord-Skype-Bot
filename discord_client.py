@@ -267,7 +267,7 @@ class ApplicationDiscord(discord.Client):
 
             line_splits[li] = " ".join(word_splits)
         content = '\n'.join(line_splits)
-        content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.name}: </b> {content}"
+        content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.nick if message.author.nick else message.author.name}: </b> {content}"
         if message.attachments:
             for word in message.attachments:
                 content += f"\n<a href=\"{word['url']}\">{word['filename']}</a>"
