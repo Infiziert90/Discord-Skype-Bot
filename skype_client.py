@@ -32,7 +32,7 @@ class AsyncSkype(skpy.SkypeEventLoop):
         self.get_forbidden_list()
         self.message_dict = {}
         self.refresh_token()
-        asyncio.ensure_future(self.main_loop())
+        self.loop_task = asyncio.ensure_future(self.main_loop())
 
     def enque(self, msg, content, work, new_msg=None):
         self.forward_q.append((msg, content, work, new_msg))
@@ -59,6 +59,8 @@ class AsyncSkype(skpy.SkypeEventLoop):
                     else:
                         self.delete_message(msg, content, work, new_msg)
                     await asyncio.sleep(.1)
+        except asyncio.CancelledError:
+            return
         except Exception as e:
             logging.exception("Exception in skype main loop")
 

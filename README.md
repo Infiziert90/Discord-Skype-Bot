@@ -6,13 +6,14 @@ Discord-Bot that connects discord and skype.
 ## Usage
 
 1. Start with installing the dependencies with `pip`.
-2. Change necessary settings in the config file (`skype-bot.ini`).
-3. Get your skype chat-id:
+2. Rename `skype-bot-example.ini` to `skype-bot.ini`
+3. Change necessary settings in the config file (`skype-bot.ini`).
+4. Get your skype chat-id:
     ```
     $ python skype-get.py
     ```
     You will now find a new file in your config folder.  
-4. Start the bot by executing:
+5. Start the bot by executing:
     ```
     $ python bot.py
     ```

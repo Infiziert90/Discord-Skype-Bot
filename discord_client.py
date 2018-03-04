@@ -31,12 +31,13 @@ class ApplicationDiscord(discord.Client):
         self.skype = None
         self.start_tuple = None
         self.first_run = True
+        self.loop_task = None
 
     def enque(self, msg, file, work):
         self.forward_q.append((msg, file, work))
 
     def run_loop(self):
-        asyncio.ensure_future(self.main_loop())
+        self.loop_task = asyncio.ensure_future(self.main_loop())
 
     async def main_loop(self):
         try:
@@ -51,6 +52,8 @@ class ApplicationDiscord(discord.Client):
                         await self.discord_edit_message(msg, file, work)
                     else:
                         await self.discord_delete_message(msg, file, work)
+        except asyncio.CancelledError:
+            return
         except Exception as e:
             logging.exception("exception in discord main loop")
             self.run_loop()

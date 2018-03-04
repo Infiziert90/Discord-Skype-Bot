@@ -1,6 +1,7 @@
 import sys
 import logging
 from discord_client import ApplicationDiscord
+from skpy import SkypeAuthException
 from skype_client import AsyncSkype
 from config import *
 
@@ -12,11 +13,19 @@ if not sys.version_info[:2] >= (3, 6):
 
 def main():
     load_config()
-    logging.info("Start discord run")
     app = ApplicationDiscord()
-    skype = AsyncSkype(config.MAIN.skype_email, config.MAIN.skype_password)
+    try:
+        skype = AsyncSkype(config.MAIN.skype_email, config.MAIN.skype_password)
+    except SkypeAuthException as err:
+        logging.error(f"Can't login into skype.\n{err}")
+        exit(1)
+
     app.skype, skype.discord = skype, app
-    app.run(config.MAIN.login_token)
+    try:
+        app.run(config.MAIN.login_token)
+    except KeyboardInterrupt:
+        app.loop_task.close()
+        skype.loop_task.close()
 
 
 if __name__ == "__main__":

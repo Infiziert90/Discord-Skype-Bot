@@ -255,17 +255,7 @@
   "thumbsup|3": "~(like)~",
   "penguin": "~(hedgehog)~",
 
-  "####CUSTOM_EMOJI####": "####SKYPE_EMOJI####(only discord->skype)",
-  "rope_thinking": "(๑و•̀ㅅ•́)و",
-  "reeee": ". (҂`_´) <,︻╦╤─ ҉ - - - - - - Ra Ta Ta Ta Ta Ta Ta",
-  "NotLikeDuck": "ʕ•ᴥ•ʔ",
-  "bakaKaren": "(눈_눈)",
-  "HyperEndMe": "(ノಠ益ಠ)ノ彡┻━┻",
-  "Sataniaaa": "( ¬‿¬)",
-  "nepSmug": "( ͡° ͜ʖ ͡°)",
-  "saitama_ok": "Ô_ô",
-  "same": "(@_@)",
-  "SagiriDed": "¬_¬",
-  "SanatiaGeh": "ಠ_ಠ",
-  "rubyCry": "(ಥ﹏ಥ)"
+  "_Comment": "You can add here custom emojis. (only discord->skype)",
+  "####DISCORD_EMOJI####": "####SKYPE_EMOJI####",
+  "reeee": "REEEEEEE"
 }
