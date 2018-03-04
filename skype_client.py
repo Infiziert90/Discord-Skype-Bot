@@ -31,16 +31,8 @@ class AsyncSkype(skpy.SkypeEventLoop):
         self.skype_forbidden = []
         self.get_forbidden_list()
         self.message_dict = {}
-        self.dead = False
         self.refresh_token()
         asyncio.ensure_future(self.main_loop())
-
-    # TODO: Remove this hack
-    @classmethod
-    def reinstanciate(cls, current):
-        new_skype = AsyncSkype(config.MAIN.skype_email, config.MAIN.skype_password, forward_q=current.forward_q)
-        current.discord.skype = new_skype
-        new_skype.discord = current.discord
 
     def enque(self, msg, content, work, new_msg=None):
         self.forward_q.append((msg, content, work, new_msg))
@@ -54,11 +46,11 @@ class AsyncSkype(skpy.SkypeEventLoop):
         cyc = asyncio.Future()
         cyc.set_result(0)
         try:
-            while not self.dead:
+            while True:
                 await asyncio.sleep(.3)
                 if cyc.done():
                     cyc = asyncio.ensure_future(loop.run_in_executor(None, self.cycle))
-                while self.forward_q and not self.dead:
+                while self.forward_q:
                     msg, content, work, new_msg = self.forward_q.popleft()
                     if work == 1:
                         self.send_message(msg, content, work, new_msg)
@@ -69,11 +61,6 @@ class AsyncSkype(skpy.SkypeEventLoop):
                     await asyncio.sleep(.1)
         except Exception as e:
             logging.exception("Exception in skype main loop")
-            self.dead = True
-
-        if self.dead:
-            logging.exception(f"{str(datetime.now())} Exception in skype main loop: Try reinstancing")
-            self.reinstanciate(self)
 
     def onEvent(self, event):
         if not hasattr(event, "msg") or event.msg.user.id in self.skype_forbidden:
@@ -106,7 +93,6 @@ class AsyncSkype(skpy.SkypeEventLoop):
         except Exception as e:
             logging.exception("Exception in skype send_message")
             self.forward_q.append((msg, content, work, new_msg))
-            self.dead = True
 
     def edit_message(self, msg: discord.Message, content, work, new_msg):
         if msg.id not in self.message_dict:
@@ -118,7 +104,6 @@ class AsyncSkype(skpy.SkypeEventLoop):
         except Exception as e:
             logging.exception("Exception in skype edit_message")
             self.forward_q.append((msg, content, work, new_msg))
-            self.dead = True
 
     def delete_message(self, msg, content, work, new_msg):
         if msg.id not in self.message_dict:
@@ -129,7 +114,6 @@ class AsyncSkype(skpy.SkypeEventLoop):
         except Exception as e:
             logging.exception("Exception in skype delete_message")
             self.forward_q.append((msg, content, work, new_msg))
-            self.dead = True
 
     def update_internal_msg(self, skype_msg_obj, discord_msg_obj):
         self.message_dict[discord_msg_obj.id] = skype_msg_obj
