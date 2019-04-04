@@ -201,7 +201,7 @@ class ApplicationDiscord(discord.Client):
     def fill_member_list(self):
         for user in self.get_all_members():
             self.all_members[user.name.lower()] = user.id
-            if user.nick:
+            if hasattr('user', 'nick'):
                 self.all_members_nick[user.nick.lower()] = user.id
 
     @staticmethod
@@ -270,7 +270,7 @@ class ApplicationDiscord(discord.Client):
 
             line_splits[li] = " ".join(word_splits)
         content = '\n'.join(line_splits)
-        content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.nick if message.author.nick else message.author.name}: </b> {content}"
+        content = f"<b raw_pre=\"*\" raw_post=\"*\">{message.author.nick if hasattr('message.author', 'nick') else message.author.name}: </b> {content}"
         if message.attachments:
             for word in message.attachments:
                 content += f"\n<a href=\"{word['url']}\">{word['filename']}</a>"
