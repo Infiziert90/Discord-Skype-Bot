@@ -62,8 +62,8 @@ class ApplicationDiscord(discord.Client):
         logging.info(f'Logged in \nUsername: {self.user.name}\nID: {self.user.id}\nAPI Version: {discord.__version__}')
         gameplayed = config.MAIN.get("gameplayed", "Yuri is Love")
         if gameplayed:
-            game = discord.Game(name=gameplayed)
-            await self.change_presence(game=game)
+            activity = discord.Game(name=gameplayed)
+            await self.change_presence(status=discord.Status.idle, activity=activity)
         avatar_file_name = config.MAIN.get("avatarfile")
         if avatar_file_name:
             with open(avatar_file_name, "rb") as f:
@@ -77,8 +77,7 @@ class ApplicationDiscord(discord.Client):
             self.fill_member_list()
             self.skype.discord = self
             for k, v in list(config.ch.items()):
-                if v.isdigit():
-                    config.ch[k] = self.get_channel(v)
+                config.ch[k] = self.get_channel(v)
             self.run_loop()
 
     # TODO Add embed support
@@ -90,7 +89,7 @@ class ApplicationDiscord(discord.Client):
             return
         if message.author.id in self.discord_forbidden or message.author.name in self.discord_forbidden:
             return
-        if message.channel in config.ch:
+        if message.channel.id in config.ch:
             content = await self.to_skype_format(content, message)
             self.skype.enque(message, content=content, work=1, new_msg=None)
 
@@ -118,13 +117,13 @@ class ApplicationDiscord(discord.Client):
             if file:
                 discord_message = await self.send_file(config.ch[msg.chat.id], file[0], filename=file[1], content=msg.content)
             else:
-                discord_message = await self.send_message(config.ch[msg.chat.id], msg.content)
+                discord_message = await config.ch[msg.chat.id].send(msg.content)
             self.update_internal_msg(msg, discord_message)
         except KeyError:
             logging.warning("Deleted a message from unkown chat.")
         except Exception as e:
             logging.exception("Exception while sending discord message")
-            self.forward_q.append((msg, file, work))
+            #self.forward_q.append((msg, file, work))
 
     async def discord_edit_message(self, msg, file, work):
         if msg.clientId not in self.message_dict:
@@ -248,7 +247,7 @@ class ApplicationDiscord(discord.Client):
 
                 mention = re.match(rex["<@!?(\d+)>"], word)
                 if mention:
-                    mention = await self.get_user_info(mention.group(1))
+                    mention = await self.fetch_user(mention.group(1))
                     mention = f"@{mention.name}"
                     word_splits[index] = mention
                     continue

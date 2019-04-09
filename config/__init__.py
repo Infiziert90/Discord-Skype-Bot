@@ -99,7 +99,7 @@ def load_config():
 
     config.ch = bidict()
     for key, channel_id in config.DISCORD_CHANNELS.items():
-        config.ch[channel_id] = f"{config.SKYPE_CHANNELS[key]}"
+        config.ch[int(channel_id)] = f"{config.SKYPE_CHANNELS[key]}"
     logging.info(f"Channel:\n{config.ch}")
 
     config.emoji = bidict()

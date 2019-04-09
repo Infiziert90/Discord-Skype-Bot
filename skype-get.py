@@ -19,10 +19,11 @@ def main():
     skype_chats_recent = []
     for keys, chat in sk.chats.recent().items():
         if chat.__class__.__name__ == "SkypeSingleChat":
-            skype_chats_recent.append(f"SkypeSingleChat:\nName = {chat.user.name}\nChat_ID = 8:{chat.user.id}\n\n")
+            skype_chats_recent.append(f"SkypeSingleChat:\n\tName = {chat.user.name}\n\tChat_ID = {chat.id}\n\n")
         if chat.__class__.__name__ == "SkypeGroupChat":
-            skype_chats_recent.append(f"SkypeGroupChat:\nName = {chat.topic}\nChat_ID = {chat.id}\n\n")
+            skype_chats_recent.append(f"SkypeGroupChat:\n\tName = {chat.topic}\n\tChat_ID = {chat.id}\n\n")
     recent_chats = "".join(skype_chats_recent)
+    print(recent_chats)
     with open(f"{output_name}-information.txt", "w") as skype_info:
         skype_info.writelines(recent_chats)
 
